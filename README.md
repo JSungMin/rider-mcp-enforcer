@@ -29,6 +29,33 @@ actually use them instead of grep:
 > 2. **`search_symbol` on Unreal C++ can be weak** — it may return filename/path matches (e.g. `.Build.cs`)
 >    rather than the exact class. Verify results; fall back to `search_text` when a symbol hit looks off.
 
+## Performance (measured)
+
+Real A/B on a large UE5 project — finding one class name (~2,400 textual occurrences) via Bash grep
+vs this plugin. No project source is reproduced; see [BENCHMARK.md](BENCHMARK.md) for method.
+
+| | Bash grep (whole repo) | Bash grep (game dir) | **Plugin (Rider MCP, summarized)** |
+| --- | ---: | ---: | ---: |
+| Tokens to the model | ~195,600 | ~114,100 | **~1,700** |
+| Wall time | 55,006 ms | 382 ms | **~870 ms** |
+
+- **Tokens: ~98–99% fewer (~67–115×)** — always. ~87% from response summarization, the rest from capping.
+- **Time: ~63× faster** when grep would scan the whole repo (incl. Engine); slightly slower than a
+  pre-narrowed grep (MCP has fixed SSE round-trip overhead, ripgrep is very fast on a small scope).
+
+### Accuracy difference (and why)
+It's a **precision/recall trade**, not "one is more correct":
+- **Recall:** the plugin returns the top `N` (cap), not all 2,400+ hits. The withheld ~98% are mostly
+  comments/includes/substring noise. Need an exhaustive list? Raise `RIDER_MAX_RESULTS` or use grep.
+- **Precision:** grep matches every substring (a `Foo` query also hits `FooBar`), over-reporting ~100×
+  here; the plugin's symbol search returned 25 distinct candidate files.
+- **Known weakness:** on Unreal C++, `search_symbol` may point at a file's line 1 rather than the exact
+  declaration (Rider indexing limit). `search_text` gives the real `file:line  code`; the skill tells
+  Claude to prefer it when a symbol hit looks off.
+
+> Net: for navigation (definition + representative usages) the plugin is more accurate **and** far
+> cheaper; for an exhaustive occurrence audit, raise the cap or use grep on purpose.
+
 ## Prerequisites
 
 - **JetBrains Rider 2025.2+**, running, with the project open.
