@@ -1,0 +1,15 @@
+{
+  "name": "rider-mcp-enforcer",
+  "owner": {
+    "name": "JSungMin",
+    "url": "https://github.com/JSungMin"
+  },
+  "plugins": [
+    {
+      "name": "rider-mcp-enforcer",
+      "source": "./",
+      "version": "0.1.0",
+      "description": "Force Claude Code to use Rider's MCP symbol/reference/file index instead of Bash grep, with token-flood summarization."
+    }
+  ]
+}

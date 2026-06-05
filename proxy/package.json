@@ -1,0 +1,13 @@
+{
+  "name": "rider-search-proxy",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "MCP proxy that fronts JetBrains Rider's MCP server and summarizes/token-caps symbol & reference responses for Claude Code.",
+  "bin": { "rider-search-proxy": "src/server.js" },
+  "scripts": { "start": "node src/server.js" },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0"
+  },
+  "engines": { "node": ">=18" }
+}
