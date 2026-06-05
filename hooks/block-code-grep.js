@@ -18,6 +18,12 @@ process.stdin.on("end", () => {
     process.exit(0); // unparseable — don't block
   }
   if (!cmd) process.exit(0);
+
+  // Escape hatch: if Rider MCP is disabled/unavailable, blocking grep would leave Claude
+  // with no way to search code. Set RIDER_ENFORCE=0 (or false/off) to disable blocking.
+  const enforce = String(process.env.RIDER_ENFORCE ?? "1").toLowerCase();
+  if (enforce === "0" || enforce === "false" || enforce === "off") process.exit(0);
+
   const c = cmd.toLowerCase();
 
   // Does the command invoke a text-search tool?

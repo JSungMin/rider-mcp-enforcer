@@ -21,9 +21,11 @@ This project is open in JetBrains Rider with the Rider MCP server connected (ser
 - Faster: indexed lookup, no full-tree scan.
 
 ## Fallback
-If a `rider-search` tool errors with "not connected", tell the user to enable Rider MCP
-(Rider → Settings | Tools | MCP Server → Enable → Copy SSE Config) and set `RIDER_MCP_SSE_URL`,
-then fall back to `grep` for the current turn only.
+If a `rider-search` tool errors with "not connected" (or only a `rider_status` tool exists),
+Rider MCP is OFF. Tell the user to enable it (Rider → Settings | Tools | MCP Server → Enable →
+Copy SSE Config) and set `RIDER_MCP_SSE_URL`. Until then, code-grep is blocked by the hook — the
+user can set `RIDER_ENFORCE=0` to allow grep as a fallback. Do not loop on blocked grep; surface the
+fix and move on.
 
 > Note: tool names above match the JetBrains Rider MCP server (2025.2+). If a name differs in
 > your Rider build, check the `rider-search` tool list and map accordingly.

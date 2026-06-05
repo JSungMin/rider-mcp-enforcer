@@ -55,6 +55,7 @@ appear, and that a `grep src/**/*.cpp` is blocked with a redirect message.
 | `RIDER_MCP_SSE_URL` | — (required) | Rider MCP SSE URL from "Copy SSE Config". Without it the proxy returns setup instructions and Claude falls back to grep. |
 | `RIDER_MAX_RESULTS` | `50` | Max `file:line` lines kept per summarized response. |
 | `RIDER_SUMMARIZE_TOOLS` | `find_references,find_symbol,find_usages,list_file_symbols,search_in_files_content` | Which Rider tool responses to summarize. |
+| `RIDER_ENFORCE` | `1` | Set to `0`/`false`/`off` to **disable the grep-blocking hook** — use this if Rider MCP is off/unavailable and you don't want code searches blocked. |
 
 ## How enforcement works
 
@@ -65,13 +66,51 @@ appear, and that a `grep src/**/*.cpp` is blocked with a redirect message.
 - The **skill** biases Claude toward the Rider tools proactively.
 - The **proxy** guarantees the token cap regardless of how Claude calls the tool.
 
+## Enable Rider MCP (do this first — it is OFF until you enable it)
+
+The Rider MCP server is **not active by default in every build/setup** — many users have it disabled
+and see the plugin "do nothing useful." Enable and locate it:
+
+1. Rider → **Settings | Tools | MCP Server**.
+2. Tick **Enable MCP Server**. (If you don't see this page, update to Rider **2025.2+**.)
+3. In **Manual Client Configuration**, click **Copy SSE Config** (or Copy Stdio Config).
+4. From the copied config, take the SSE URL and set it:
+   ```bash
+   export RIDER_MCP_SSE_URL="http://localhost:<port>/sse"   # macOS/Linux
+   $env:RIDER_MCP_SSE_URL = "http://localhost:<port>/sse"   # PowerShell
+   ```
+   The port is **per-instance** (often in the 63342/64342 range, but do not hardcode — copy it).
+5. Restart Claude Code (or `/reload-plugins`).
+
+### Verify it's actually on
+```bash
+# Is Rider serving the MCP SSE endpoint? 200/SSE = good, connection refused = disabled/wrong port.
+curl -i -m 3 "$RIDER_MCP_SSE_URL"
+```
+In Claude Code, the `rider-search` server should list real Rider tools (`find_symbol`,
+`find_references`, …). If it only lists a single `rider_status` tool, the proxy could **not** reach
+Rider — MCP is off or the URL is wrong.
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| `rider-search` only shows a `rider_status` tool | Proxy can't reach Rider (MCP disabled or wrong URL) | Enable MCP (above), set/correct `RIDER_MCP_SSE_URL`, restart. |
+| Tool call returns "rider-search-proxy is not connected to Rider" | `RIDER_MCP_SSE_URL` unset/unreachable | Set it from **Copy SSE Config**; confirm with `curl`. |
+| **Code searches get blocked but Rider tools don't work** (MCP off → stuck) | Hook blocks grep while Rider is unavailable | Set `RIDER_ENFORCE=0` to disable the block until MCP is on, **or** disable the plugin. |
+| Hook blocks a search you wanted | False positive on a code path | Target a non-code file, or set `RIDER_ENFORCE=0` for that session. |
+| Wrong/empty summaries | Rider tool name differs from defaults, or unusual response shape | Set `RIDER_SUMMARIZE_TOOLS` to your build's tool names; tune `RIDER_MAX_RESULTS`. |
+| `curl` to the SSE URL refuses connection | Rider not running, MCP off, or wrong port | Start Rider, enable MCP, re-copy the SSE config. |
+
+> **The disabled-MCP footgun:** with MCP off, the proxy returns "not connected" *and* the hook would
+> block code-grep — leaving Claude no way to search. The hook honors `RIDER_ENFORCE=0` precisely for
+> this case: it disables blocking so grep works as a fallback until you turn MCP on.
+
 ## Status / caveats
 
-- **v0.1.0, pre-live-verification.** Tool names target Rider 2025.2+. If your Rider build names a
-  tool differently, check the `rider-search` tool list and set `RIDER_SUMMARIZE_TOOLS` accordingly.
+- **v0.1.x, pre-live-verification of the Rider tool schema.** Tool names target Rider 2025.2+. If your
+  build names a tool differently, check the `rider-search` tool list and set `RIDER_SUMMARIZE_TOOLS`.
 - The summarizer is heuristic (keeps `path:line`-looking lines). Tune `RIDER_MAX_RESULTS` per repo.
-- Rider must be running; if it isn't, the proxy returns a clear "not connected" result and the skill
-  falls back to grep for that turn.
 - Transport is SSE. If your Rider build only offers stdio, open an issue — a stdio client mode can be
   added.
 
