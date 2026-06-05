@@ -45,12 +45,13 @@ process.stdin.on("end", () => {
     process.stderr.write(
       "[rider-mcp-enforcer] Blocked a code-symbol search via Bash.\n" +
         "Use the Rider MCP tools (server: 'rider-search') instead:\n" +
-        "  - definition / type / symbol  -> find_symbol\n" +
-        "  - usages / references         -> find_references\n" +
-        "  - symbols in a file / outline -> list_file_symbols\n" +
-        "They query Rider's live index: more accurate (real defs/usages, no string false-positives,\n" +
-        "resolves macros/UPROPERTY) and token-capped. If you genuinely need raw text search over\n" +
-        "non-code (logs, comments, config), re-run targeting a non-code file."
+        "  - symbol / definition         -> search_symbol  (args: q, limit, projectPath)\n" +
+        "  - text / references in code   -> search_text or search_regex  (q, paths, limit)\n" +
+        "  - file by name                -> search_file / find_files_by_name_keyword\n" +
+        "  - type info at a position     -> get_symbol_info  (filePath, line, column)\n" +
+        "They use Rider's index, are token-capped by the proxy. If multiple projects are open,\n" +
+        "pass projectPath (or set RIDER_PROJECT_PATH). For raw non-code text (logs, config),\n" +
+        "re-run targeting a non-code file, or set RIDER_ENFORCE=0."
     );
     process.exit(2); // block
   }

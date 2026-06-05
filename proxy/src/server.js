@@ -28,10 +28,14 @@ import {
 
 const RIDER_URL = process.env.RIDER_MCP_SSE_URL || "";
 const MAX_RESULTS = parseInt(process.env.RIDER_MAX_RESULTS || "50", 10) || 50;
+// Default project for Rider tools when multiple projects are open and the caller
+// omits projectPath (Rider errors out otherwise). Optional.
+const PROJECT_PATH = process.env.RIDER_PROJECT_PATH || "";
+// Real Rider MCP (2025.2+) search/symbol tools whose JSON responses we compact.
 const SUMMARIZE = new Set(
   (
     process.env.RIDER_SUMMARIZE_TOOLS ||
-    "find_references,find_symbol,find_usages,list_file_symbols,search_in_files_content"
+    "search_symbol,search_file,search_text,search_regex,search_in_files_by_text,search_in_files_by_regex,find_files_by_name_keyword,find_files_by_glob"
   )
     .split(",")
     .map((s) => s.trim())
@@ -54,24 +58,44 @@ async function connectRider() {
   return client;
 }
 
-// Reduce a tool result's text content to <= MAX_RESULTS ref-like lines + a footer.
+// Fallback: reduce plain-text content to <= MAX_RESULTS non-empty lines + footer.
+function summarizeLines(part) {
+  const lines = part.text.split(/\r?\n/).filter((l) => l.trim().length);
+  const kept = lines.slice(0, MAX_RESULTS).map((l) => l.trim());
+  let text = kept.join("\n");
+  const extra = lines.length - kept.length;
+  if (extra > 0) text += `\n… ${extra} more line(s) truncated by rider-search-proxy.`;
+  return { type: "text", text: text || part.text };
+}
+
+// Rider search/symbol tools return JSON: {"items":[{filePath,startLine,lineText,...}],"more":bool}.
+// Compact each item to `path:line  lineText`, cap at MAX_RESULTS, surface truncation/`more`.
 function summarize(result) {
   if (!result || !Array.isArray(result.content)) return result;
   const content = result.content.map((part) => {
     if (part.type !== "text" || typeof part.text !== "string") return part;
-    const lines = part.text.split(/\r?\n/);
-    const refLike = lines.filter(
-      (l) => /\.[A-Za-z0-9_]+[:(]\s*\d+/.test(l) || /:\d+:/.test(l)
-    );
-    const base = refLike.length ? refLike : lines.filter((l) => l.trim().length);
-    const kept = base.slice(0, MAX_RESULTS).map((l) => l.trim());
-    let text = kept.join("\n");
-    const extra = base.length - kept.length;
-    if (extra > 0) {
-      text +=
-        `\n… ${extra} more result(s) truncated by rider-search-proxy ` +
-        `(raise RIDER_MAX_RESULTS or narrow the query).`;
+    let parsed;
+    try {
+      parsed = JSON.parse(part.text);
+    } catch {
+      return summarizeLines(part);
     }
+    const items = Array.isArray(parsed?.items)
+      ? parsed.items
+      : Array.isArray(parsed)
+      ? parsed
+      : null;
+    if (!items) return summarizeLines(part);
+    const kept = items.slice(0, MAX_RESULTS).map((it) => {
+      const p = String(it.filePath ?? it.path ?? it.pathInProject ?? "").replace(/\\/g, "/");
+      const line = it.startLine ?? it.line ?? "";
+      const txt = String(it.lineText ?? it.text ?? "").trim();
+      return `${p}${line !== "" ? ":" + line : ""}${txt ? "  " + txt : ""}`;
+    });
+    let text = kept.join("\n");
+    const extra = items.length - kept.length;
+    if (extra > 0) text += `\n… ${extra} more truncated by rider-search-proxy (raise RIDER_MAX_RESULTS or narrow q).`;
+    if (parsed?.more) text += `\n(server reports more results available — narrow q or raise the tool's limit.)`;
     return { type: "text", text: text || part.text };
   });
   return { ...result, content };
@@ -129,10 +153,14 @@ async function main() {
 
   server.setRequestHandler(CallToolRequestSchema, async (req) => {
     if (!rider) return SETUP_RESULT;
-    const { name, arguments: args } = req.params;
+    const { name } = req.params;
+    const args = { ...(req.params.arguments || {}) };
+    // Inject a default project when the caller omits it (Rider errors when multiple
+    // projects are open and projectPath is missing).
+    if (PROJECT_PATH && args.projectPath == null) args.projectPath = PROJECT_PATH;
     let result;
     try {
-      result = await rider.callTool({ name, arguments: args || {} });
+      result = await rider.callTool({ name, arguments: args });
     } catch (e) {
       return {
         isError: true,

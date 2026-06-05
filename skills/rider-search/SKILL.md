@@ -6,19 +6,29 @@ description: Routing rules for code search in JetBrains Rider projects — use t
 
 This project is open in JetBrains Rider with the Rider MCP server connected (server name: `rider-search`). Karpathy-style rules: do the listed thing, do not improvise.
 
-## Rules
-- Symbol / definition / type lookup → ALWAYS call `find_symbol` first. Never `grep`/`rg` for this.
-- Usages / references / call sites of a symbol → `find_references`. Never grep for call sites.
-- File by name → the Rider file-search tool. Never `find -name` for source files.
-- Symbols in a file / outline → `list_file_symbols`.
-- Type info / signature / docs → `get_symbol_info`.
-- Rename a symbol → `rename_refactoring` (updates all references). Never sed/replace across files for a rename.
-- Bash `grep`/`rg`/`find` is a LAST RESORT — only for non-code text (logs, comments, config) or when Rider MCP is unavailable.
+## Tools (real Rider MCP 2025.2+ names)
+- Symbol / definition → `search_symbol`  (args: `q`, `limit`, `include_external`, `paths`, `projectPath`). Never `grep`/`rg` for this.
+- File by name → `search_file` or `find_files_by_name_keyword` / `find_files_by_glob`. Never `find -name` for source files.
+- Text / regex in code (also the way to find references — see note) → `search_text` / `search_regex` (or `search_in_files_by_text` / `search_in_files_by_regex`).
+- Type info / signature at a position → `get_symbol_info`  (args: `filePath`, `line`, `column`).
+- Rename a symbol → `rename_refactoring`  (args: `pathInProject`, `symbolName`, `newName`). Never sed/replace across files for a rename.
+- `read_file` / `get_file_text_by_path` to read, not `cat`.
+
+### projectPath
+Rider errors if multiple projects are open and `projectPath` is omitted. Pass `projectPath`, or have
+the user set `RIDER_PROJECT_PATH` so the proxy injects it. If a call returns "Unable to determine the
+target project" with a numbered project list, ask the user which project, then pass its path.
+
+### No dedicated find-usages
+This Rider MCP build has **no semantic find-references/find-usages tool**. To find references, use
+`search_text`/`search_regex` on the symbol name (string match, like grep but indexed + token-capped).
+Don't claim semantic usage results you didn't get.
 
 ## Why
-- Rider's index resolves real definitions/usages; grep returns string matches → false positives, and misses macro/`UPROPERTY`/generated symbols in Unreal C++.
-- The `rider-search` proxy token-caps responses; grep over a large UE codebase floods context with thousands of lines.
-- Faster: indexed lookup, no full-tree scan.
+- `search_symbol` uses Rider's index (no full-tree scan, token-capped by the proxy).
+- grep over a large UE codebase floods context with thousands of lines; the proxy caps responses.
+- Caveat: on Unreal C++, `search_symbol` quality varies (may return file/name matches rather than the
+  exact class). Verify the result; fall back to `search_text` if the symbol result looks off.
 
 ## Fallback
 If a `rider-search` tool errors with "not connected" (or only a `rider_status` tool exists),

@@ -5,6 +5,7 @@
       "args": ["${CLAUDE_PLUGIN_ROOT}/proxy/src/server.js"],
       "env": {
         "RIDER_MCP_SSE_URL": "${RIDER_MCP_SSE_URL}",
+        "RIDER_PROJECT_PATH": "${RIDER_PROJECT_PATH}",
         "RIDER_MAX_RESULTS": "50"
       }
     }

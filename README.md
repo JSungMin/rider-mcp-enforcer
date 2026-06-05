@@ -9,18 +9,25 @@ and burns context.
 
 ## What it does
 
-Rider 2025.2+ ships an MCP server that already exposes `find_symbol`, `find_references`,
-`list_file_symbols`, `get_symbol_info`, `rename_refactoring`. This plugin adds the layer that
-makes Claude actually use it:
+Rider 2025.2+ ships an MCP server that exposes (verified live) `search_symbol`, `search_file`,
+`search_text`, `search_regex`, `find_files_by_name_keyword`, `find_files_by_glob`, `get_symbol_info`,
+`rename_refactoring`, `read_file`, and ~20 more. This plugin adds the layer that makes Claude
+actually use them instead of grep:
 
 | Layer | File | Effect |
 | --- | --- | --- |
-| **Enforcement hook** | `hooks/block-code-grep.js` | Blocks Bash `grep`/`rg`/`find -name` over source files and redirects Claude to the Rider MCP tools. Non-code text searches (logs, md, json) pass through. |
-| **Routing skill** | `skills/rider-search/SKILL.md` | Karpathy-style rules: symbol/ref/file lookups → Rider tools first; grep is last resort. |
-| **Summarizing proxy** | `proxy/` | An MCP server that fronts Rider's MCP and trims `find_references`/`find_symbol` responses to `file:line` lines, capped at `RIDER_MAX_RESULTS`. Stops UE find-usages floods from blowing up context. |
+| **Enforcement hook** | `hooks/block-code-grep.js` | Blocks Bash `grep`/`rg`/`find -name` over source files and redirects Claude to the Rider MCP tools. Non-code text searches (logs, md, json) pass through. Set `RIDER_ENFORCE=0` to disable. |
+| **Routing skill** | `skills/rider-search/SKILL.md` | Karpathy-style rules: symbol/file/text lookups → Rider tools first; grep is last resort. |
+| **Summarizing proxy** | `proxy/` | An MCP server fronting Rider's MCP. Parses the JSON search responses (`{items:[{filePath,startLine,lineText}],more}`) into compact `path:line  text`, capped at `RIDER_MAX_RESULTS`, and injects a default `projectPath`. Stops large-codebase result floods from blowing up context. |
 
-> Honest scope: Rider's MCP alone already gives you symbol search. This plugin's value is
-> **enforcement + token control** on top of it.
+> Honest scope: Rider's MCP alone already gives you symbol/file search. This plugin's value is
+> **enforcement + token control + projectPath ergonomics** on top of it.
+>
+> **Two real limitations of this Rider MCP build (verified live):**
+> 1. **No semantic find-usages/find-references tool.** Reference-finding falls back to `search_text`/
+>    `search_regex` (indexed string match, not semantic).
+> 2. **`search_symbol` on Unreal C++ can be weak** — it may return filename/path matches (e.g. `.Build.cs`)
+>    rather than the exact class. Verify results; fall back to `search_text` when a symbol hit looks off.
 
 ## Prerequisites
 
@@ -55,6 +62,7 @@ appear, and that a `grep src/**/*.cpp` is blocked with a redirect message.
 | `RIDER_MCP_SSE_URL` | — (required) | Rider MCP SSE URL from "Copy SSE Config". Without it the proxy returns setup instructions and Claude falls back to grep. |
 | `RIDER_MAX_RESULTS` | `50` | Max `file:line` lines kept per summarized response. |
 | `RIDER_SUMMARIZE_TOOLS` | `find_references,find_symbol,find_usages,list_file_symbols,search_in_files_content` | Which Rider tool responses to summarize. |
+| `RIDER_PROJECT_PATH` | — | Default project path the proxy injects when a tool call omits `projectPath`. Set this when multiple projects are open in Rider (otherwise Rider errors "Unable to determine the target project"). Get it from the "Currently open projects" list in that error, or the project root. |
 | `RIDER_ENFORCE` | `1` | Set to `0`/`false`/`off` to **disable the grep-blocking hook** — use this if Rider MCP is off/unavailable and you don't want code searches blocked. |
 
 ## How enforcement works
@@ -97,6 +105,7 @@ Rider — MCP is off or the URL is wrong.
 | --- | --- | --- |
 | `rider-search` only shows a `rider_status` tool | Proxy can't reach Rider (MCP disabled or wrong URL) | Enable MCP (above), set/correct `RIDER_MCP_SSE_URL`, restart. |
 | Tool call returns "rider-search-proxy is not connected to Rider" | `RIDER_MCP_SSE_URL` unset/unreachable | Set it from **Copy SSE Config**; confirm with `curl`. |
+| Tool returns "Unable to determine the target project" | Multiple projects open in Rider, no `projectPath` | Set `RIDER_PROJECT_PATH` to the project root (the error lists open projects), or pass `projectPath` per call. |
 | **Code searches get blocked but Rider tools don't work** (MCP off → stuck) | Hook blocks grep while Rider is unavailable | Set `RIDER_ENFORCE=0` to disable the block until MCP is on, **or** disable the plugin. |
 | Hook blocks a search you wanted | False positive on a code path | Target a non-code file, or set `RIDER_ENFORCE=0` for that session. |
 | Wrong/empty summaries | Rider tool name differs from defaults, or unusual response shape | Set `RIDER_SUMMARIZE_TOOLS` to your build's tool names; tune `RIDER_MAX_RESULTS`. |
