@@ -14,10 +14,12 @@ This project is open in JetBrains Rider with the Rider MCP server connected (ser
 - Rename a symbol → `rename_refactoring`  (args: `pathInProject`, `symbolName`, `newName`). Never sed/replace across files for a rename.
 - `read_file` / `get_file_text_by_path` to read, not `cat`.
 
-### projectPath
-Rider errors if multiple projects are open and `projectPath` is omitted. Pass `projectPath`, or have
-the user set `RIDER_PROJECT_PATH` so the proxy injects it. If a call returns "Unable to determine the
-target project" with a numbered project list, ask the user which project, then pass its path.
+### projectPath / open projects
+- Rider MCP only searches projects **currently open in the IDE** (and finished indexing). A path that
+  isn't open returns "doesn't correspond to any open project" — tell the user to open it in Rider.
+- Rider errors if multiple projects are open and `projectPath` is omitted. Pass `projectPath`, or have
+  the user set `RIDER_PROJECT_PATH` so the proxy injects it. If a call returns "Unable to determine the
+  target project" with a numbered project list, ask the user which project, then pass its path.
 
 ### No dedicated find-usages
 This Rider MCP build has **no semantic find-references/find-usages tool**. To find references, use

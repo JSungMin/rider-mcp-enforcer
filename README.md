@@ -106,6 +106,7 @@ Rider — MCP is off or the URL is wrong.
 | `rider-search` only shows a `rider_status` tool | Proxy can't reach Rider (MCP disabled or wrong URL) | Enable MCP (above), set/correct `RIDER_MCP_SSE_URL`, restart. |
 | Tool call returns "rider-search-proxy is not connected to Rider" | `RIDER_MCP_SSE_URL` unset/unreachable | Set it from **Copy SSE Config**; confirm with `curl`. |
 | Tool returns "Unable to determine the target project" | Multiple projects open in Rider, no `projectPath` | Set `RIDER_PROJECT_PATH` to the project root (the error lists open projects), or pass `projectPath` per call. |
+| Tool returns "`projectPath`=… doesn't correspond to any open project" | The project is **not open in Rider** | Rider MCP only searches projects open in the IDE. Open the project in Rider (it must finish indexing), then retry. The error lists the currently-open projects. |
 | **Code searches get blocked but Rider tools don't work** (MCP off → stuck) | Hook blocks grep while Rider is unavailable | Set `RIDER_ENFORCE=0` to disable the block until MCP is on, **or** disable the plugin. |
 | Hook blocks a search you wanted | False positive on a code path | Target a non-code file, or set `RIDER_ENFORCE=0` for that session. |
 | Wrong/empty summaries | Rider tool name differs from defaults, or unusual response shape | Set `RIDER_SUMMARIZE_TOOLS` to your build's tool names; tune `RIDER_MAX_RESULTS`. |
