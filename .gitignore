@@ -2,3 +2,7 @@ node_modules/
 *.log
 .DS_Store
 proxy/node_modules/
+# local token-savings ledger + throwaway test artifacts
+*stats.json
+proxy/_t_*
+proxy/t.mjs

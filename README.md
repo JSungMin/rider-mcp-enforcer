@@ -68,6 +68,28 @@ code. So truncation is **never silent**:
 3. The skill instructs Claude: for references/refactor/rename, **stop and ask the user** with those
    options instead of acting on the partial list.
 
+## How much did it save? (token-savings command)
+
+The proxy records, per summarized call, the tokens it saved vs forwarding Rider's raw response. Check
+the running total any of these ways:
+
+- **In Claude Code:** run `/rider-mcp-enforcer:savings` (or just ask "how much has the plugin saved?").
+  It calls the `rider_savings` MCP tool.
+- **From a shell:** `node <plugin-dir>/proxy/stats.mjs`
+- **Reset:** call the `rider_savings_reset` tool.
+
+Example output:
+```
+rider-mcp-enforcer — cumulative token savings (vs forwarding Rider's raw responses)
+  summarized calls : 1
+  raw tokens       : ~30,398
+  sent tokens      : ~362
+  saved            : ~30,036 (99%)
+  noise items dropped (build artifacts): 78
+```
+> "Saved" here is vs Rider's *raw* response. Savings vs **Bash grep** are typically far larger — see
+> [BENCHMARK.md](BENCHMARK.md).
+
 ## Prerequisites
 
 - **JetBrains Rider 2025.2+**, running, with the project open.
@@ -105,6 +127,9 @@ appear, and that a `grep src/**/*.cpp` is blocked with a redirect message.
 | `RIDER_ESCALATE` | `1` | `0`/`false`/`off` disables auto-escalation (see below). |
 | `RIDER_ESCALATE_LIMIT` | `500` | When a result looks truncated, the proxy re-fetches once with this larger limit to learn the true count. |
 | `RIDER_MAX_LINE_CHARS` | `200` | Max chars of each match's code snippet (prevents one giant generated line from blowing the budget). |
+| `RIDER_EXCLUDE` | `/intermediate/,/binaries/,/build/,/saved/,/deriveddatacache/,/.vs/,/.idea/,/node_modules/,.vcxproj,.sln,.filters` | Comma list of case-insensitive path substrings dropped from results (build artifacts / generated noise). |
+| `RIDER_EXCLUDE_OFF` | `0` | `1`/`true`/`on` keeps the excluded paths in results. |
+| `RIDER_STATS_FILE` | `~/.rider-mcp-enforcer/stats.json` | Where the cumulative token-savings ledger is written. |
 | `RIDER_ENFORCE` | `1` | Set to `0`/`false`/`off` to **disable the grep-blocking hook** — use this if Rider MCP is off/unavailable and you don't want code searches blocked. |
 
 ## How enforcement works

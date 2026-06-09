@@ -25,6 +25,9 @@ import {
   ListToolsRequestSchema,
   CallToolRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 const RIDER_URL = process.env.RIDER_MCP_SSE_URL || "";
 const MAX_RESULTS = parseInt(process.env.RIDER_MAX_RESULTS || "50", 10) || 50;
@@ -40,6 +43,22 @@ const ESCALATE_LIMIT = parseInt(process.env.RIDER_ESCALATE_LIMIT || "500", 10) |
 // Cap each result's code snippet so one giant line (e.g. a long generated build-file line)
 // cannot blow the token budget.
 const MAX_LINE_CHARS = parseInt(process.env.RIDER_MAX_LINE_CHARS || "200", 10) || 200;
+// Drop build-artifact / generated paths from search results by default (they are noise
+// and bloat tokens). Case-insensitive substring match on the forward-slashed path.
+const EXCLUDE_OFF = ["1", "true", "on"].includes(
+  String(process.env.RIDER_EXCLUDE_OFF ?? "").toLowerCase()
+);
+const EXCLUDE = (
+  process.env.RIDER_EXCLUDE ||
+  "/intermediate/,/binaries/,/build/,/saved/,/deriveddatacache/,/.vs/,/.idea/,/node_modules/,.vcxproj,.sln,.filters"
+)
+  .split(",")
+  .map((s) => s.trim().toLowerCase())
+  .filter(Boolean);
+// Cumulative token-savings ledger (tokens saved vs. forwarding Rider's raw response).
+const STATS_FILE =
+  process.env.RIDER_STATS_FILE ||
+  path.join(os.homedir(), ".rider-mcp-enforcer", "stats.json");
 // Real Rider MCP (2025.2+) search/symbol tools whose JSON responses we compact.
 const SUMMARIZE = new Set(
   (
@@ -65,6 +84,54 @@ async function connectRider() {
   await client.connect(new SSEClientTransport(new URL(RIDER_URL)));
   log("connected to Rider MCP:", RIDER_URL);
   return client;
+}
+
+const tok = (s) => Math.round(Buffer.byteLength(String(s), "utf8") / 4);
+
+function isExcluded(p) {
+  if (EXCLUDE_OFF) return false;
+  const lp = p.toLowerCase();
+  return EXCLUDE.some((x) => lp.includes(x));
+}
+
+function readStats() {
+  try {
+    return JSON.parse(fs.readFileSync(STATS_FILE, "utf8"));
+  } catch {
+    return { calls: 0, rawTokens: 0, sentTokens: 0, excludedItems: 0, since: null };
+  }
+}
+function writeStats(s) {
+  try {
+    fs.mkdirSync(path.dirname(STATS_FILE), { recursive: true });
+    fs.writeFileSync(STATS_FILE, JSON.stringify(s, null, 2));
+  } catch {
+    /* stats are best-effort */
+  }
+}
+function recordSavings(rawTok, sentTok, excludedItems) {
+  const s = readStats();
+  if (!s.since) s.since = new Date().toISOString();
+  s.calls += 1;
+  s.rawTokens += rawTok;
+  s.sentTokens += sentTok;
+  s.excludedItems += excludedItems || 0;
+  writeStats(s);
+}
+function savingsReport() {
+  const s = readStats();
+  const saved = s.rawTokens - s.sentTokens;
+  const pct = s.rawTokens ? Math.round((saved / s.rawTokens) * 100) : 0;
+  return (
+    `rider-mcp-enforcer — cumulative token savings (vs forwarding Rider's raw responses)\n` +
+    `  summarized calls : ${s.calls}\n` +
+    `  raw tokens       : ~${s.rawTokens.toLocaleString()}\n` +
+    `  sent tokens      : ~${s.sentTokens.toLocaleString()}\n` +
+    `  saved            : ~${saved.toLocaleString()} (${pct}%)\n` +
+    `  noise items dropped (build artifacts): ${s.excludedItems}\n` +
+    `  since            : ${s.since || "—"}\n` +
+    `  ledger           : ${STATS_FILE}`
+  );
 }
 
 // Fallback: reduce plain-text content to <= MAX_RESULTS non-empty lines + footer.
@@ -113,14 +180,23 @@ function itemLine(it) {
 // INCOMPLETE banner with explicit options so Claude escalates to the user instead of
 // treating a partial set as the full reference list.
 function summarizeSearch(info, { escalated, fetchedLimit }) {
-  const shown = Math.min(info.items.length, MAX_RESULTS);
-  const hidden = info.items.length - shown;
+  const kept0 = info.items.filter(
+    (it) => !isExcluded(String(it.filePath ?? it.path ?? it.pathInProject ?? "").replace(/\\/g, "/"))
+  );
+  const excluded = info.items.length - kept0.length;
+  const shown = Math.min(kept0.length, MAX_RESULTS);
+  const hidden = kept0.length - shown;
   const incomplete = hidden > 0 || info.more;
-  const lines = info.items.slice(0, MAX_RESULTS).map(itemLine);
+  const lines = kept0.slice(0, MAX_RESULTS).map(itemLine);
   let text = lines.join("\n");
+  if (excluded > 0) {
+    text +=
+      `\n(${excluded} build-artifact/generated path(s) hidden by default exclude; ` +
+      `set RIDER_EXCLUDE_OFF=1 to include them.)`;
+  }
   if (incomplete) {
-    const total = info.more ? `${info.items.length}+` : `${info.items.length}`;
-    const banner =
+    const total = info.more ? `${kept0.length}+` : `${kept0.length}`;
+    text +=
       `\n\n⚠ INCOMPLETE RESULTS — showing ${shown} of ${total} match(es)` +
       (escalated ? ` (proxy already auto-raised the limit to ${fetchedLimit})` : "") +
       `.\nThis list is NOT exhaustive. Do NOT use it as the complete set for finding all` +
@@ -129,21 +205,27 @@ function summarizeSearch(info, { escalated, fetchedLimit }) {
       `  1) raise the cap (set RIDER_MAX_RESULTS higher, or pass a larger \`limit\`) to see all,\n` +
       `  2) narrow the search (pass \`paths\` to a subdirectory), or\n` +
       `  3) explicitly confirm a partial/representative result is acceptable for this task.`;
-    text += banner;
   }
-  return text || "(no results)";
+  return { text: text || "(no results)", excluded };
 }
 
-// Public entry: summarize a (possibly escalated) result for a search tool.
+// Public entry: summarize a (possibly escalated) result for a search tool + record savings.
 function summarize(result, meta = {}) {
   const info = parseSearch(result);
   if (!info) {
     // not the items-JSON shape → fall back to line trimming on text parts
     if (!result || !Array.isArray(result.content)) return result;
-    return { ...result, content: result.content.map((p) =>
-      p.type === "text" && typeof p.text === "string" ? summarizeLines(p) : p) };
+    return {
+      ...result,
+      content: result.content.map((p) =>
+        p.type === "text" && typeof p.text === "string" ? summarizeLines(p) : p
+      ),
+    };
   }
-  return { ...result, content: [{ type: "text", text: summarizeSearch(info, meta) }] };
+  const { text, excluded } = summarizeSearch(info, meta);
+  const rawTok = tok((result.content || []).map((p) => p.text || "").join("\n"));
+  recordSavings(rawTok, tok(text), excluded);
+  return { ...result, content: [{ type: "text", text }] };
 }
 
 const SETUP_RESULT = {
@@ -170,10 +252,26 @@ async function main() {
     { capabilities: { tools: {} } }
   );
 
+  const SAVINGS_TOOLS = [
+    {
+      name: "rider_savings",
+      description:
+        "Report cumulative tokens this plugin saved (vs forwarding Rider's raw responses) " +
+        "plus number of build-artifact noise items dropped. Use when the user asks how much was saved.",
+      inputSchema: { type: "object", properties: {} },
+    },
+    {
+      name: "rider_savings_reset",
+      description: "Reset the cumulative token-savings ledger to zero.",
+      inputSchema: { type: "object", properties: {} },
+    },
+  ];
+
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     if (!rider) {
       return {
         tools: [
+          ...SAVINGS_TOOLS,
           {
             name: "rider_status",
             description:
@@ -186,17 +284,28 @@ async function main() {
     }
     const { tools } = await rider.listTools();
     return {
-      tools: tools.map((t) => ({
-        ...t,
-        description:
-          (SUMMARIZE.has(t.name)
-            ? "[PREFERRED over Bash grep — Rider live index, summarized & token-capped] "
-            : "") + (t.description || ""),
-      })),
+      tools: [
+        ...SAVINGS_TOOLS,
+        ...tools.map((t) => ({
+          ...t,
+          description:
+            (SUMMARIZE.has(t.name)
+              ? "[PREFERRED over Bash grep — Rider live index, summarized & token-capped] "
+              : "") + (t.description || ""),
+        })),
+      ],
     };
   });
 
   server.setRequestHandler(CallToolRequestSchema, async (req) => {
+    // Synthetic local tools (work even when Rider is disconnected).
+    if (req.params.name === "rider_savings") {
+      return { content: [{ type: "text", text: savingsReport() }] };
+    }
+    if (req.params.name === "rider_savings_reset") {
+      writeStats({ calls: 0, rawTokens: 0, sentTokens: 0, excludedItems: 0, since: new Date().toISOString() });
+      return { content: [{ type: "text", text: "rider-mcp-enforcer savings ledger reset." }] };
+    }
     if (!rider) return SETUP_RESULT;
     const { name } = req.params;
     const args = { ...(req.params.arguments || {}) };
