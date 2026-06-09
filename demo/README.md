@@ -1,37 +1,31 @@
 # Demo
 
-A scripted, **fully synthetic** terminal demo of `gamedev-log-analyzer` (no real project data). It
-generates a UE-style log and runs `summary` / `search` / `locate` / `diff`, showing the token win.
+A scripted, **fully synthetic** demo of `gamedev-log-analyzer` (no real project data). It generates a
+UE-style log and runs `summary` / `search` / `locate` / `diff`, showing the token win. The rendered
+result is [`demo.svg`](demo.svg), embedded in the main README.
 
-## Run it
+## Regenerate (no asciinema needed)
+
+asciinema isn't available on Windows, so the cast is built directly with Node, then converted with a
+cross-platform tool:
+
+```bash
+node demo/make-cast.mjs                                                      # -> demo/demo.cast
+npx --yes svg-term-cli --in demo/demo.cast --out demo/demo.svg --window \
+  --width 104 --height 32                                                    # -> demo/demo.svg
+# GIF instead of SVG (needs the agg binary): agg demo/demo.cast demo/demo.gif
+```
+
+`make-cast.mjs` runs the demo in a temp dir with neutral filenames, so the recording shows
+`Source: Editor.log`, never a real path. Re-render from the `.cast` anytime without re-recording.
+
+## Watch it live in a terminal
 
 ```bash
 FAST=1 bash demo/play.sh    # quick, no typing animation
-bash demo/play.sh           # full pace, good for recording
+bash demo/play.sh           # full pace
 ```
 
-It runs in a throwaway temp dir with neutral filenames, so nothing on your machine leaks into a
-recording — the tool prints `Source: Editor.log`, never a real path.
-
-## Record → GIF / SVG
-
-Needs [asciinema](https://asciinema.org) plus a converter
-([agg](https://github.com/asciinema/agg) for GIF or
-[svg-term-cli](https://github.com/marionebl/svg-term-cli) for SVG).
-
-```bash
-asciinema rec demo/demo.cast --overwrite -c "bash demo/play.sh"
-agg demo/demo.cast demo/demo.gif                              # GIF
-# or: svg-term --in demo/demo.cast --out demo/demo.svg --window  # SVG (crisper, smaller)
-```
-
-## Embed in the README
-
-After committing `demo/demo.gif` (or `.svg`), drop this near the top of `README.md`:
-
-```markdown
-![gamedev-log-analyzer demo](demo/demo.gif)
-```
-
-Keep the recording short (~30 s) and the terminal ~90×24 so the GIF stays small. The `.cast` is the
-source of truth — re-render to GIF/SVG anytime without re-recording.
+`play.sh` is the human-watchable version; `make-cast.mjs` is the same flow emitted as an asciinema v2
+cast for rendering. If you do have asciinema (Linux/macOS/WSL), you can also record `play.sh` directly:
+`asciinema rec demo/demo.cast --overwrite -c "bash demo/play.sh"`.
