@@ -25,8 +25,9 @@ Steps:
    per-frame logs.
 5. **Regression triage across runs:** `… diff --pathA "<before>" --pathB "<after>"` — only the delta
    (new / gone / count-changed); omit paths to auto-pick the two newest logs.
-6. **Jump to code (if rider-mcp-enforcer is installed):** entries carry `file:line` — feed those to its
-   `get_symbol_info` / `read_file` to open the source.
+6. **Jump to code (if rider-mcp-enforcer is installed):** `… locate --path "<log>" --severityMin Error
+   --basename` gives just the distinct `file:line` (no bodies). Resolve each filename via Rider
+   `find_files_by_name_keyword`, then `read_file` a small window at that line — never dump whole files.
 7. **Escape hatch:** `… tail --lines N` for raw last N lines.
 
 Default when the user just says "check the logs": `detect` → `summary` → `search --severityMin Error`,

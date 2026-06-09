@@ -86,6 +86,27 @@ const TOOLS = [
     inputSchema: { type: "object", properties: { path: { type: "string" }, projectPath: { type: "string" } } },
   },
   {
+    name: "log_locate",
+    description:
+      "Jump list: distinct `file:line` locations of matched entries only (no message bodies), ranked by " +
+      "severity then frequency — the most compact handoff for opening the offending source. Pair with " +
+      "rider-mcp-enforcer: feed the (basename) locations to find_files_by_name_keyword → read_file at the " +
+      "line. `basename: true` strips paths to filenames for Rider's name search.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: { type: "string" },
+        projectPath: { type: "string" },
+        query: { type: "string" },
+        severityMin: { type: "string", description: "Fatal|Error|Warning|Display (default Error)" },
+        category: { type: "string" },
+        file: { type: "string" },
+        basename: { type: "boolean", description: "Strip paths to filename:line (for Rider file-name search)" },
+        max: { type: "number" },
+      },
+    },
+  },
+  {
     name: "log_diff",
     description:
       "Compare two logs (A=base/before, B=new/after) and emit ONLY the delta: new errors, errors that " +

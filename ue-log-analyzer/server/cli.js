@@ -27,6 +27,8 @@ Commands:
                     [--path --fields a,b,c --query --severityMin --window t0,t1 --max]
   diff              Delta between two logs (new/gone/changed only).
                     [--pathA --pathB | --projectPath] [--query --severityMin --category --file --groupBy --minDelta]
+  locate            Jump list: distinct file:line of matches, no bodies (for opening source).
+                    [--path --severityMin --category --file --query --basename --max]
   tail              Last N raw lines.                               [--path --lines]
   learnings         Local learnings report (parse coverage etc.).
   learnings-reset   Clear the local learnings ledger.
@@ -38,8 +40,8 @@ Settings precedence: env (UELOG_*) > ~/.ue-log-analyzer/config.json > default.`;
 
 // Flags that should be parsed as comma-separated lists.
 const LIST_FLAGS = new Set(["fields", "window"]);
-// Flags with no value (presence = true). (none today, reserved.)
-const BOOL_FLAGS = new Set([]);
+// Flags with no value (presence = true).
+const BOOL_FLAGS = new Set(["basename"]);
 
 function parseArgs(argv) {
   const a = {};
