@@ -2,6 +2,12 @@
 
 [English](README.md) · **한국어** · [rider-mcp-enforcer 마켓플레이스](../README.ko.md#마켓플레이스--2개-플러그인)의 일부
 
+[![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-7C3AED)](https://code.claude.com/docs/en/plugins)
+[![MCP](https://img.shields.io/badge/MCP-server-1f6feb)](https://modelcontextprotocol.io)
+[![version](https://img.shields.io/badge/version-0.1.1-blue)](../.claude-plugin/marketplace.json)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](../LICENSE)
+[![Stars](https://img.shields.io/github/stars/JSungMin/rider-mcp-enforcer?style=social)](https://github.com/JSungMin/rider-mcp-enforcer/stargazers)
+
 거대한 에디터 로그를 **토큰 효율적으로** 읽는 **Claude Code 플러그인**. Unreal `Saved/Logs/*.log`,
 Unity `Editor.log`는 보통 수십 MB의 반복 스팸이라 `cat`/`grep`하면 컨텍스트가 터집니다. 이 플러그인은
 대신 파싱·**중복제거(dedup)**·분류합니다. **IDE 불필요** — 순수 파일 파싱.

@@ -1,6 +1,37 @@
-# rider-mcp-enforcer
+# rider-mcp-enforcer · ue-log-analyzer
 
 **English** · [한국어](README.ko.md)
+
+[![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-7C3AED)](https://code.claude.com/docs/en/plugins)
+[![MCP](https://img.shields.io/badge/MCP-server-1f6feb)](https://modelcontextprotocol.io)
+[![rider-mcp-enforcer](https://img.shields.io/badge/rider--mcp--enforcer-v0.1.9-blue)](.claude-plugin/marketplace.json)
+[![ue-log-analyzer](https://img.shields.io/badge/ue--log--analyzer-v0.1.1-blue)](.claude-plugin/marketplace.json)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/JSungMin/rider-mcp-enforcer/pulls)
+[![Stars](https://img.shields.io/github/stars/JSungMin/rider-mcp-enforcer?style=social)](https://github.com/JSungMin/rider-mcp-enforcer/stargazers)
+
+> **Read big things cheaply.** A two-plugin Claude Code marketplace for large **Unreal C++ /
+> Unity / .NET** projects: search the codebase through **Rider's index** instead of `grep`, and
+> analyze **tens-of-MB editor logs** — both at **~99% fewer tokens**.
+
+<!-- DEMO: drop docs/demo.gif (terminal recording of a grep-block redirect + a 50MB log → 2.5K summary),
+     then replace the line below with:
+<p align="center"><img src="docs/demo.gif" alt="rider-mcp-enforcer + ue-log-analyzer demo" width="760"></p>
+-->
+<p align="center"><em>📽️ Demo GIF coming soon — for now, the numbers below tell the story.</em></p>
+
+### Is this you?
+- 🔍 **`grep` floods your context** on a giant Unreal C++ repo → search via Rider's index, token-capped (**~99% fewer tokens** — see [benchmarks](#combined-token-savings-measured)).
+- 🪵 **A 50 MB editor log is unreadable** → parse, deduplicate, and classify it down to **~2,500 tokens**.
+- 🤖 **Claude keeps `grep`-ing code** → a hook automatically **redirects it to the Rider tools**.
+
+### Contents
+- [Marketplace — two plugins](#marketplace--two-plugins) · [Combined savings](#combined-token-savings-measured) · [Using both together](#using-both-together)
+- [What it does](#what-it-does) · [Performance](#performance-measured) · [Editor log analysis](#editor-log-analysis)
+- [Prerequisites](#prerequisites) · [Install](#install) · [Setup](#setup--configuration-command) · [Updating](#updating-to-a-new-version)
+- [Configuration](#configuration-env) · [Troubleshooting](#troubleshooting) · [Contributing](#contributing) · [Changelog](#changelog)
+
+---
 
 A **Claude Code plugin** that makes Claude do symbol search, find-usages, file search, and
 function/variable navigation through **JetBrains Rider's live index** instead of Bash `grep` —
@@ -291,6 +322,14 @@ Rider — MCP is off or the URL is wrong.
 - **0.1.2** — aligned to the real Rider MCP tool schema (live-verified).
 - **0.1.1** — handle disabled/unreachable Rider MCP (`RIDER_ENFORCE=0` escape).
 - **0.1.0** — initial: JetBrains-MCP reuse + grep-blocking hook + routing skill + summarizing proxy.
+
+## Contributing
+
+Issues and PRs welcome — bug reports, new log formats/engines, additional Rider tool mappings, or
+docs. See the [PR flow](https://github.com/JSungMin/rider-mcp-enforcer/pulls); pre-push secret scan +
+README/Changelog updates expected with code changes.
+
+**⭐ If this saved you tokens or debugging time, a star helps others find it.**
 
 ## License
 

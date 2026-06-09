@@ -1,6 +1,36 @@
-# rider-mcp-enforcer
+# rider-mcp-enforcer · ue-log-analyzer
 
 [English](README.md) · **한국어**
+
+[![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-7C3AED)](https://code.claude.com/docs/en/plugins)
+[![MCP](https://img.shields.io/badge/MCP-server-1f6feb)](https://modelcontextprotocol.io)
+[![rider-mcp-enforcer](https://img.shields.io/badge/rider--mcp--enforcer-v0.1.9-blue)](.claude-plugin/marketplace.json)
+[![ue-log-analyzer](https://img.shields.io/badge/ue--log--analyzer-v0.1.1-blue)](.claude-plugin/marketplace.json)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/JSungMin/rider-mcp-enforcer/pulls)
+[![Stars](https://img.shields.io/github/stars/JSungMin/rider-mcp-enforcer?style=social)](https://github.com/JSungMin/rider-mcp-enforcer/stargazers)
+
+> **큰 것을 싸게 읽는다.** 대형 **Unreal C++ / Unity / .NET** 프로젝트용 2-플러그인 Claude Code
+> 마켓플레이스: 코드베이스를 `grep` 대신 **Rider 인덱스**로 검색하고, **수십 MB 에디터 로그**를
+> 분석 — 둘 다 **~99% 적은 토큰**으로.
+
+<!-- DEMO: docs/demo.gif 추가 후 아래 줄을 <img>로 교체:
+<p align="center"><img src="docs/demo.gif" alt="demo" width="760"></p>
+-->
+<p align="center"><em>📽️ 데모 GIF 준비 중 — 아래 수치가 먼저 말해줍니다.</em></p>
+
+### 이런 경험 있나요?
+- 🔍 **거대 Unreal C++ repo에서 `grep`이 컨텍스트를 폭발** → Rider 인덱스로 검색, 토큰 상한 (**~99% 절감** — [벤치마크](#합산-토큰-절감-실측)).
+- 🪵 **50MB 에디터 로그를 읽을 수 없음** → 파싱·dedup·분류해서 **~2,500 토큰**으로.
+- 🤖 **Claude가 자꾸 코드를 `grep`** → 훅이 자동으로 **Rider 도구로 리다이렉트**.
+
+### 목차
+- [마켓플레이스 — 2개 플러그인](#마켓플레이스--2개-플러그인) · [합산 절감](#합산-토큰-절감-실측) · [두 플러그인 함께 쓰기](#두-플러그인-함께-쓰기)
+- [무엇을 하나](#무엇을-하나) · [성능](#성능-실측) · [에디터 로그 분석](#에디터-로그-분석)
+- [사전 요구사항](#사전-요구사항) · [설치](#설치) · [설정](#설정-명령어) · [업데이트](#새-버전으로-업데이트)
+- [설정 항목](#설정-항목-env--config-키) · [문제 해결](#문제-해결) · [기여](#기여) · [Changelog](#changelog)
+
+---
 
 Claude가 Bash `grep` 대신 **JetBrains Rider의 실시간 인덱스**로 심볼 검색 · 참조(usage) 찾기 · 파일
 검색 · 함수/변수 탐색을 하도록 만들고, *그걸 강제*하며, 참조가 폭발할 때 토큰 사용량을 상한선으로
@@ -288,6 +318,13 @@ Claude Code에서 `rider-search` 서버가 실제 Rider 도구들(`search_symbol
 - **0.1.2** — 실제 Rider MCP 도구 스키마에 정렬(라이브 검증).
 - **0.1.1** — 꺼짐/도달불가 Rider MCP 처리 (`RIDER_ENFORCE=0` 탈출구).
 - **0.1.0** — 최초: JetBrains-MCP 재사용 + grep 차단 훅 + 라우팅 스킬 + 요약 프록시.
+
+## 기여
+
+이슈·PR 환영 — 버그 리포트, 새 로그 포맷/엔진, Rider 도구 매핑 추가, 문서 등. 코드 변경 시 push 전
+사내정보 스캔 + README/Changelog 갱신을 함께 해주세요.
+
+**⭐ 토큰이나 디버깅 시간을 아꼈다면, star가 다른 사람들의 발견을 돕습니다.**
 
 ## 라이선스
 
