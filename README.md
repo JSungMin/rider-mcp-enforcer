@@ -9,6 +9,37 @@ and *enforces* it, while capping the tokens a find-usages flood can spend.
 Built for large **Unreal C++ (Rider for Unreal)** and **.NET/C#** codebases, where `grep` is slow
 and burns context.
 
+## Marketplace — two plugins
+
+This repo is a Claude Code **plugin marketplace** with two installable plugins that share one idea —
+**read big things cheaply**:
+
+| Plugin | Does | Needs |
+| --- | --- | --- |
+| **rider-mcp-enforcer** (this page) | Force Rider's MCP symbol/reference/file search over Bash grep, token-capped | Rider running + MCP |
+| **[ue-log-analyzer](ue-log-analyzer/README.md)** | Parse/dedup/classify huge UE/Unity editor logs, search + extract scalars | Node only (no IDE) |
+
+Install one or both:
+```bash
+/plugin marketplace add JSungMin/rider-mcp-enforcer
+/plugin install rider-mcp-enforcer@rider-mcp-enforcer   # code search
+/plugin install ue-log-analyzer@rider-mcp-enforcer      # log analysis
+```
+
+### Combined token savings (measured)
+| Task | Bash / raw | Plugin | Reduction |
+| --- | ---: | ---: | ---: |
+| Symbol search on a UE5 repo | ~195,600 tok | ~1,700 tok | **~99%** |
+| Read a 57 MB editor log | ~1,250,000 tok | ~2,500 tok | **~99.8%** |
+| Search one log trace tag (9,226 hits) | ~690,000 tok | ~1,700 tok | **~99.8%** |
+
+### Using both together
+The log analyzer emits `file:line` for each entry; the Rider plugin turns a `file:line` into the
+actual symbol/source. A typical loop:
+1. `/ue-log-analyzer:logs` → find the error/warning and its `file:line`.
+2. Hand that location to rider-mcp-enforcer's `get_symbol_info` / `read_file` (or `search_symbol`) to
+   open and understand the code — without ever grepping or dumping the raw log.
+
 ## What it does
 
 Rider 2025.2+ ships an MCP server that exposes (verified live) `search_symbol`, `search_file`,
