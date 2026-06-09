@@ -344,6 +344,10 @@ README/Changelog updates expected with code changes.
 
 **⭐ If this saved you tokens or debugging time, a star helps others find it.**
 
+## Privacy
+
+These plugins collect no personal data and process everything locally — see [PRIVACY.md](PRIVACY.md).
+
 ## License
 
 MIT © 2026 JSungMin
