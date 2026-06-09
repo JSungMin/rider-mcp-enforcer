@@ -129,24 +129,60 @@ function effectiveConfig() {
     statsFile: STATS_FILE,
   };
 }
-async function detectRiderUrl() {
-  const candidates = [
-    "http://127.0.0.1:64342/sse",
-    "http://127.0.0.1:63342/sse",
-  ];
-  const found = [];
-  for (const url of candidates) {
-    try {
-      const ac = new AbortController();
-      const to = setTimeout(() => ac.abort(), 1500);
-      const res = await fetch(url, { signal: ac.signal });
-      clearTimeout(to);
-      if (res.status >= 200 && res.status < 400) found.push(url);
-    } catch {
-      /* not listening */
+async function httpProbe(url, ms = 1500) {
+  try {
+    const ac = new AbortController();
+    const to = setTimeout(() => ac.abort(), ms);
+    const res = await fetch(url, { signal: ac.signal });
+    clearTimeout(to);
+    return res.status; // any HTTP status means something is listening
+  } catch {
+    return 0;
+  }
+}
+// Detect the Rider MCP SSE endpoint, and whether the Rider IDE itself seems to be up
+// (its built-in web server answers even when the MCP server is off) — so we can tell
+// "running but MCP off" from "Rider not running".
+async function detectRider() {
+  const sseCandidates = ["http://127.0.0.1:64342/sse", "http://127.0.0.1:63342/sse"];
+  const sseUrls = [];
+  for (const u of sseCandidates) {
+    const s = await httpProbe(u);
+    if (s >= 200 && s < 400) sseUrls.push(u);
+  }
+  let riderUp = sseUrls.length > 0;
+  if (!riderUp) {
+    for (const p of [63342, 64342]) {
+      if (await httpProbe(`http://127.0.0.1:${p}/`)) {
+        riderUp = true;
+        break;
+      }
     }
   }
-  return found;
+  return { sseUrls, riderUp };
+}
+// Build a clear, actionable activation card for when Rider MCP is unreachable.
+function enableCard({ sseUrls, riderUp }) {
+  if (sseUrls.length) {
+    return (
+      `✅ Rider MCP SSE detected: ${sseUrls.join(", ")}\n` +
+      `Apply it: rider_setup { "riderSseUrl": "${sseUrls[0]}" }  →  then /reload-plugins.`
+    );
+  }
+  const steps = [];
+  if (!riderUp) steps.push("Start JetBrains Rider (2025.2+) and open your project.");
+  steps.push('Rider → Settings | Tools | MCP Server → tick "Enable MCP Server".');
+  steps.push('Click "Copy SSE Config", then run: rider_setup { "riderSseUrl": "<that URL>" }.');
+  steps.push("Run /reload-plugins.");
+  const head = riderUp
+    ? "⚠ Rider is running, but its MCP server is OFF."
+    : "⚠ Rider does not appear to be running.";
+  return (
+    head +
+    "\n\nEnable it:\n" +
+    steps.map((s, i) => `  ${i + 1}. ${s}`).join("\n") +
+    "\n\nNot ready to enable? Set RIDER_ENFORCE=0 so Bash grep isn't blocked in the meantime."
+  );
 }
 
 async function connectRider() {
@@ -302,9 +338,10 @@ const SETUP_RESULT = {
     {
       type: "text",
       text:
-        "rider-search-proxy is not connected to Rider. In Rider: Settings | Tools | MCP Server " +
-        "-> Enable MCP Server -> Copy SSE Config, set RIDER_MCP_SSE_URL to that URL, then restart " +
-        "Claude Code. Until then, fall back to grep for this turn.",
+        "rider-search-proxy is not connected to Rider's MCP server. Call the rider_enable tool for a " +
+        "guided activation (it probes Rider, gives the exact enable steps, and the SSE URL to apply). " +
+        "Don't want to enable it now? Set RIDER_ENFORCE=0 so Bash grep isn't blocked, and use grep for " +
+        "this turn.",
     },
   ],
 };
@@ -350,6 +387,14 @@ async function main() {
     {
       name: "rider_detect",
       description: "Probe localhost for a running Rider MCP SSE endpoint and suggest riderSseUrl.",
+      inputSchema: { type: "object", properties: {} },
+    },
+    {
+      name: "rider_enable",
+      description:
+        "Guided activation when Rider MCP is off: probes whether Rider is running vs its MCP server is " +
+        "disabled, returns the exact enable steps + the SSE URL to apply (and the RIDER_ENFORCE=0 " +
+        "fallback). Use when search tools report 'not connected'.",
       inputSchema: { type: "object", properties: {} },
     },
     {
@@ -428,22 +473,9 @@ async function main() {
         ],
       };
     }
-    if (req.params.name === "rider_detect") {
-      const found = await detectRiderUrl();
-      return {
-        content: [
-          {
-            type: "text",
-            text: found.length
-              ? `Found Rider MCP SSE at:\n${found.map((u) => "  " + u).join("\n")}\n` +
-                `Set it with rider_setup { "riderSseUrl": "${found[0]}" }, then /reload-plugins.\n` +
-                `(Verify in Rider: Settings | Tools | MCP Server → Copy SSE Config — the port is per-instance.)`
-              : `No Rider MCP SSE endpoint responded on the common ports (63342/64342). ` +
-                `Enable it in Rider (Settings | Tools | MCP Server → Enable), then use Copy SSE Config ` +
-                `and set riderSseUrl via rider_setup.`,
-          },
-        ],
-      };
+    if (req.params.name === "rider_detect" || req.params.name === "rider_enable") {
+      const probe = await detectRider();
+      return { content: [{ type: "text", text: enableCard(probe) }] };
     }
     if (req.params.name === "rider_savings") {
       return { content: [{ type: "text", text: savingsReport() }] };
