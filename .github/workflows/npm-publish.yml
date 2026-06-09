@@ -26,6 +26,11 @@ jobs:
         run: node cli.js config
       - name: Publish to npm
         working-directory: gamedev-log-analyzer/server
-        run: npm publish --provenance --access public
+        # Write the auth line into the package dir's .npmrc so `npm publish` finds the token even when
+        # run from a subdirectory (setup-node's generated .npmrc isn't picked up here). npm never
+        # publishes .npmrc, and the `files` allowlist excludes it.
+        run: |
+          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > .npmrc
+          npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
