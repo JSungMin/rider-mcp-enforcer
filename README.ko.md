@@ -340,6 +340,10 @@ Claude Code에서 `rider-search` 서버가 실제 Rider 도구들(`search_symbol
 
 **⭐ 토큰이나 디버깅 시간을 아꼈다면, star가 다른 사람들의 발견을 돕습니다.**
 
+## 개인정보
+
+이 플러그인들은 개인정보를 수집하지 않고 모든 처리를 로컬에서 합니다 — [PRIVACY.md](PRIVACY.md) 참고.
+
 ## 라이선스
 
 MIT © 2026 JSungMin
