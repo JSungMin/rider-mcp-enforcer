@@ -1,5 +1,7 @@
 # rider-mcp-enforcer
 
+**English** · [한국어](README.ko.md)
+
 A **Claude Code plugin** that makes Claude do symbol search, find-usages, file search, and
 function/variable navigation through **JetBrains Rider's live index** instead of Bash `grep` —
 and *enforces* it, while capping the tokens a find-usages flood can spend.
@@ -173,7 +175,7 @@ Check what's installed with `/plugin` (it lists each plugin's version). If a com
 | --- | --- | --- |
 | `RIDER_MCP_SSE_URL` | — (required) | Rider MCP SSE URL from "Copy SSE Config". Without it the proxy returns setup instructions and Claude falls back to grep. |
 | `RIDER_MAX_RESULTS` | `50` | Max `file:line` lines kept per summarized response. |
-| `RIDER_SUMMARIZE_TOOLS` | `find_references,find_symbol,find_usages,list_file_symbols,search_in_files_content` | Which Rider tool responses to summarize. |
+| `RIDER_SUMMARIZE_TOOLS` | `search_symbol,search_file,search_text,search_regex,search_in_files_by_text,search_in_files_by_regex,find_files_by_name_keyword,find_files_by_glob` | Which Rider tool responses to summarize. |
 | `RIDER_PROJECT_PATH` | — | Default project path the proxy injects when a tool call omits `projectPath`. Set this when multiple projects are open in Rider (otherwise Rider errors "Unable to determine the target project"). Get it from the "Currently open projects" list in that error, or the project root. |
 | `RIDER_ESCALATE` | `1` | `0`/`false`/`off` disables auto-escalation (see below). |
 | `RIDER_ESCALATE_LIMIT` | `500` | When a result looks truncated, the proxy re-fetches once with this larger limit to learn the true count. |
@@ -244,6 +246,9 @@ Rider — MCP is off or the URL is wrong.
 
 ## Changelog
 
+- **0.1.8** — hook fix: only block when a search tool is the **actual command** of a segment (no more
+  false positives on `node setup.mjs`, `cd`, or paths/args containing `plugins`/`source`/`rg`);
+  Korean README ([README.ko.md](README.ko.md)).
 - **0.1.7** — in-Claude setup + savings as typed slash commands (`commands/`); config file
   `~/.rider-mcp-enforcer/config.json` (env > config > default); `rider_setup`/`rider_config`/
   `rider_detect` tools; `setup.mjs`.
