@@ -97,13 +97,46 @@ Net: for **navigation** (jump to the definition / see representative usages), th
 accurate *and* far cheaper. For an **exhaustive audit** of every textual occurrence, raise the cap or
 use grep on purpose.
 
-## Reproduce
+# Logs: A/B (gamedev-log-analyzer)
+
+Same A/B framing for the bundled log analyzer: **Arm A** = paste the raw editor log into context;
+**Arm B** = the `gamedev-log` CLI (summary / search / locate / diff). Measured live against a real
+Unreal Engine 5 project's `Saved/Logs` (two real editor logs of different sizes). Token ≈ bytes ÷ 4.
+No log lines are reproduced — only sizes.
+
+| Operation (Arm B) | Editor log ~253 KB (~63,212 tok raw) | Editor log ~1.07 MB (~267,117 tok raw) |
+| --- | ---: | ---: |
+| `summary` (severity counts + top categories) | ~123 tok · **99.8%** fewer | ~129 tok · **99.95%** fewer |
+| `search` Warning+ (dedup groups by callsite) | ~1,228 tok · 98.1% fewer | ~1,905 tok · 99.3% fewer |
+| `search` Error+ (dedup groups by callsite) | ~313 tok · 99.5% fewer | ~476 tok · 99.8% fewer |
+| `locate` Error+ (`file:line` jump list) | — | ~78 tok · 99.97% fewer |
+| `fields` (4 scalar columns) † | ~134 tok vs ~2,066 · **93.5%** fewer | ~141 tok vs ~2,180 · **93.5%** fewer |
+| `diff` Warning+ (delta of two runs) | ~1,053 tok vs ~330,329 tok for pasting both raw · **99.7%** fewer | |
+
+† `fields` **scalarizes** a log — it pulls just the requested scalar columns out of matching lines
+into a compact table. Its fair baseline is not the whole log but the **raw lines you'd `grep` to read
+those scalars** (here ~56–66 matching lines); the columnar form drops the timestamp/log-prefix/body
+noise around each value. The win is larger on real **trace logs** that dump the same scalar keys every
+frame (hundreds–thousands of rows), where the columns stay dense while raw lines explode.
+
+**The win grows with log size** — raw logs scale linearly (a 1 MB log is ~267k tokens), while the
+summary stays flat (~130 tokens) because it reports counts, not bodies. `search`/`locate` stay small
+by deduping repeated lines into templated groups and capping. `diff` reads two runs and returns only
+what changed, instead of pasting both logs to compare.
+
+# Reproduce
 
 ```bash
 # grep side
 rg -n "<Symbol>" "<project>/<game-source-dir>"      # narrow scope
 rg -n "<Symbol>" "<project>"                          # whole repo (incl Engine)
 
-# MCP side (from proxy/)
-RIDER_MCP_SSE_URL="http://127.0.0.1:<port>/sse" RIDER_PROJECT_PATH="<project>" Q="<Symbol>" node bench.mjs
+# Rider MCP side, A/B (from proxy/)
+RIDER_MCP_SSE_URL="http://127.0.0.1:<port>/sse" RIDER_PROJECT_PATH="<project>" \
+  Q="AActor,UObject,BeginPlay" NARROW="Source" node bench-ab.mjs
+
+# Logs A/B (from repo root) — counts only, never log content.
+# FIELDS (optional) adds the scalar-extraction row, compared vs grep of the matching lines.
+LOG="<project>/Saved/Logs/<Editor>.log" LOG_B="<project>/Saved/Logs/<older>.log" \
+  FIELDS="Key1,Key2,ts" node gamedev-log-analyzer/eval/bench-ab.mjs
 ```
