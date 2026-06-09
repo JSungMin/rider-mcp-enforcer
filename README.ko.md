@@ -302,6 +302,7 @@ Claude Code에서 `rider-search` 서버가 실제 Rider 도구들(`search_symbol
 | 원하던 검색을 훅이 차단 | 코드 경로 오탐 | 비코드 파일 대상으로 재실행하거나 해당 세션 `RIDER_ENFORCE=0`. |
 | 요약이 틀리거나 빔 | Rider 도구 이름이 기본값과 다르거나 응답 형식이 특이 | `RIDER_SUMMARIZE_TOOLS`를 빌드의 실제 도구 이름으로 설정; `RIDER_MAX_RESULTS` 조정. |
 | SSE URL에 `curl`이 연결 거부 | Rider 미실행, MCP 꺼짐, 또는 포트 오류 | Rider 실행, MCP 활성화, SSE config 재복사. |
+| `Dependency "gamedev-log-analyzer@rider-mcp-enforcer" is not found in any configured marketplace` (Plugin Errors 패널) | **마켓플레이스 캐시가 낡음** — `ue-log-analyzer`→`gamedev-log-analyzer` rename 후, 갱신된 `plugin.json`은 새 의존성 이름을 가리키는데 캐시된 카탈로그는 옛 이름만 가지고 있음 | 카탈로그 갱신 후 리로드: `/plugin marketplace update rider-mcp-enforcer` → `/reload-plugins` (패널이 계속 뜨면 Claude Code 재시작). 남은 `ue-log-analyzer` 설치본은 무해 — `claude plugin prune`으로 제거. |
 
 > **꺼진-MCP 함정:** MCP가 꺼지면 프록시는 "not connected"를 반환하고 *동시에* 훅이 code-grep을
 > 차단 → Claude가 검색할 방법이 없어집니다. 훅은 바로 이 경우를 위해 `RIDER_ENFORCE=0`을 지원합니다

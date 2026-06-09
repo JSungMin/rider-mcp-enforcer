@@ -309,6 +309,7 @@ Rider — MCP is off or the URL is wrong.
 | Hook blocks a search you wanted | False positive on a code path | Target a non-code file, or set `RIDER_ENFORCE=0` for that session. |
 | Wrong/empty summaries | Rider tool name differs from defaults, or unusual response shape | Set `RIDER_SUMMARIZE_TOOLS` to your build's tool names; tune `RIDER_MAX_RESULTS`. |
 | `curl` to the SSE URL refuses connection | Rider not running, MCP off, or wrong port | Start Rider, enable MCP, re-copy the SSE config. |
+| `Dependency "gamedev-log-analyzer@rider-mcp-enforcer" is not found in any configured marketplace` (Plugin Errors panel) | **Stale marketplace cache** after the `ue-log-analyzer`→`gamedev-log-analyzer` rename: the updated `plugin.json` names the new dependency, but your cached catalog still lists the old one | Refresh the catalog, then reload: `/plugin marketplace update rider-mcp-enforcer` → `/reload-plugins` (restart Claude Code if the panel still shows it). A leftover `ue-log-analyzer` install is harmless — remove it with `claude plugin prune`. |
 
 > **The disabled-MCP footgun:** with MCP off, the proxy returns "not connected" *and* the hook would
 > block code-grep — leaving Claude no way to search. The hook honors `RIDER_ENFORCE=0` precisely for
