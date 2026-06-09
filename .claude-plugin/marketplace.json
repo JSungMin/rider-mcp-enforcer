@@ -8,7 +8,7 @@
     {
       "name": "rider-mcp-enforcer",
       "source": "./",
-      "version": "0.1.8",
+      "version": "0.1.7",
       "description": "Force Claude Code to use Rider's MCP symbol/reference/file index instead of Bash grep, with token-flood summarization."
     }
   ]

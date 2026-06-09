@@ -140,6 +140,33 @@ You don't edit OS environment variables. Settings live in a config file
 Settings are read at proxy startup → **run `/reload-plugins` after changing them**. Precedence:
 **environment variable > config file > built-in default** (so a same-named env var still wins).
 
+## Updating to a new version
+
+Claude Code caches the marketplace repo, so new commits are **not** auto-fetched. To pull a newer
+version of this plugin:
+
+```bash
+# 1) Refresh the cached marketplace catalog
+/plugin marketplace update rider-mcp-enforcer
+
+# 2) Update the installed plugin (or uninstall + install to be sure)
+/plugin update rider-mcp-enforcer
+#   fallback: /plugin uninstall rider-mcp-enforcer  then  /plugin install rider-mcp-enforcer@rider-mcp-enforcer
+
+# 3) If the proxy's dependencies changed, reinstall them
+cd <plugin-dir>/proxy && npm install
+
+# 4) Reload so the new hook/command/MCP server take effect
+/reload-plugins        # or restart Claude Code
+```
+
+Check what's installed with `/plugin` (it lists each plugin's version). If a command like
+`/rider-mcp-enforcer:setup` is missing, your installed copy predates it — update as above.
+
+> Maintainer note: the `version` field in `.claude-plugin/plugin.json` gates updates — bump it when
+> you want clients to pick up changes. Config keys/commands/tools and the **Changelog** below must be
+> updated in the same commit as any source change.
+
 ## Configuration (env)
 
 | Var | Default | Meaning |
@@ -217,10 +244,9 @@ Rider — MCP is off or the URL is wrong.
 
 ## Changelog
 
-- **0.1.8** — moved `setup`/`savings` to typed slash commands (`commands/`) so they show up reliably;
-  routing skill stays in `skills/`.
-- **0.1.7** — in-Claude setup command + `~/.rider-mcp-enforcer/config.json` (env > config > default);
-  `rider_setup`/`rider_config`/`rider_detect` tools; `setup.mjs`.
+- **0.1.7** — in-Claude setup + savings as typed slash commands (`commands/`); config file
+  `~/.rider-mcp-enforcer/config.json` (env > config > default); `rider_setup`/`rider_config`/
+  `rider_detect` tools; `setup.mjs`.
 - **0.1.6** — default build-artifact exclude filter; cumulative token-savings ledger + `rider_savings`
   tool / `/savings` / `stats.mjs`.
 - **0.1.5** — never-silent truncation: auto-escalate once, then loud `INCOMPLETE` banner; per-line cap.
