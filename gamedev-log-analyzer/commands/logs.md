@@ -1,10 +1,10 @@
 ---
-description: Analyze the editor/build log (Unreal Saved/Logs, Unity Editor.log, or any structured log) — parse, deduplicate, classify by severity/category, and read it token-efficiently via the ue-log CLI instead of dumping the raw file.
+description: Analyze the game-engine/build log (Unreal Saved/Logs, Unity Editor.log, Godot output, MSVC/UBT/MSBuild, or any structured log) — parse, deduplicate, classify by severity/category, and read it token-efficiently via the gamedev-log CLI instead of dumping the raw file.
 ---
 
-# ue-log-analyzer — editor log analysis
+# gamedev-log-analyzer — game-engine/build log analysis
 
-Read the editor log smartly via the **`ue-log` CLI** — never `cat`/`grep`/`Get-Content` the raw log
+Read the log smartly via the **`gamedev-log` CLI** — never `cat`/`grep`/`Get-Content` the raw log
 (it can be tens of MB). Run it through **Bash** with the plugin-root path (pure Node, no deps, no PATH
 setup); quote every path:
 

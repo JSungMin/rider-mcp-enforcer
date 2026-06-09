@@ -1,5 +1,5 @@
 ---
-name: ue-log-analyzer
+name: gamedev-log-analyzer
 description: >-
   Analyze an editor or build log (Unreal Engine Saved/Logs, Unity Editor.log, Godot output,
   MSVC/UBT/MSBuild build output, or any structured text log) token-efficiently. Use when the user
@@ -7,18 +7,18 @@ description: >-
   reading, searching, summarizing, or diffing a log; investigating editor/engine errors, warnings,
   crashes, asserts, callstacks, or log spam; or asks "what's flooding the log" / "what changed since
   the last run". Parses, deduplicates, classifies by severity/category, and extracts decisive fields
-  via the `ue-log` CLI instead of dumping the raw file (logs can be tens of MB).
+  via the `gamedev-log` CLI instead of dumping the raw file (logs can be tens of MB).
 ---
 
-# ue-log-analyzer — editor/build log analysis (CLI)
+# gamedev-log-analyzer — game-engine/build log analysis (CLI)
 
-Read logs through the **`ue-log` CLI**, never `cat`/`grep`/`Get-Content` the raw file — editor logs
+Read logs through the **`gamedev-log` CLI**, never `cat`/`grep`/`Get-Content` the raw file — these logs
 are routinely tens of MB and will flood the context. The CLI parses → classifies → deduplicates →
 returns a compact, token-capped summary (often ~99% smaller than the raw log).
 
 > Engine coverage: **Unreal runtime + MSVC/UBT/MSBuild/Unity-C# build errors are live-verified.**
 > **Unity-deep and Godot parsing are best-effort from public docs and NOT yet verified against real
-> Unity/Godot logs** — say so if you report Unity/Godot results, and run `ue-log learnings` to see what
+> Unity/Godot logs** — say so if you report Unity/Godot results, and run `gamedev-log learnings` to see what
 > went unparsed.
 
 ## How to run it
@@ -50,7 +50,7 @@ Quote every path argument (Windows paths/spaces). `--help` lists everything.
   `--fields Pawn,Alpha,ts,Pos.x,step:Pos,d:Yaw` (forms: `Key`, `Key.x|.y|.z`, `Key.Y|.P|.R`, `ts`,
   `dts`, `d:Key`, `step:Key`) · `--query` · `--window t0,t1` · `--max N`. Biggest win on per-frame logs.
 - `tail` — last N raw lines (escape hatch). `--lines N`.
-- `setup` / `config` — persist/show settings (`~/.ue-log-analyzer/config.json`). Keys: `--projectPath
+- `setup` / `config` — persist/show settings (`~/.gamedev-log-analyzer/config.json`). Keys: `--projectPath
   --logPath --logMaxBytes --maxGroups --maxLineChars`.
 - `learnings` / `learnings-reset` — local sanitized parse-coverage report.
 

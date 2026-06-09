@@ -3,7 +3,7 @@
 _Last updated: 2026-06-09_
 
 This policy covers the Claude Code plugins in this repository: **rider-mcp-enforcer** and
-**ue-log-analyzer**.
+**gamedev-log-analyzer**.
 
 ## Summary
 
@@ -15,12 +15,12 @@ All processing happens locally on your machine.
 - **rider-mcp-enforcer** sends your search queries to **JetBrains Rider's MCP server on your own
   machine** (a `localhost` endpoint you configure) and summarizes the results. It does not send your
   source code anywhere else.
-- **ue-log-analyzer** reads **editor log files on your local disk** (paths you configure or that are
-  auto-detected) and parses them in-process. It does not upload logs anywhere.
+- **gamedev-log-analyzer** reads **game-engine/build log files on your local disk** (paths you configure
+  or that are auto-detected) and parses them in-process. It does not upload logs anywhere.
 
 ## What is stored, and where (all local)
 
-- Configuration files: `~/.rider-mcp-enforcer/config.json`, `~/.ue-log-analyzer/config.json`.
+- Configuration files: `~/.rider-mcp-enforcer/config.json`, `~/.gamedev-log-analyzer/config.json`.
 - A token-savings counter: `~/.rider-mcp-enforcer/stats.json` (aggregate token counts only — no code,
   no log content, no identifiers).
 - The MCP server dependencies (`node_modules`) installed into the plugin's data directory.

@@ -1,4 +1,4 @@
-# ue-log-analyzer
+# gamedev-log-analyzer
 
 [English](README.md) · **한국어** · [rider-mcp-enforcer 마켓플레이스](../README.ko.md#마켓플레이스--2개-플러그인)의 일부
 
@@ -51,19 +51,19 @@ Unity `Editor.log`는 보통 수십 MB의 반복 스팸이라 `cat`/`grep`하면
 
 > ⚠️ **Unity 심층 및 Godot 파싱은 각 엔진 공개 문서/콘솔 출력 기반 best-effort로, 실제 Unity/Godot
 > 프로젝트 로그에 대해 아직 검증되지 않았습니다.** 미인식 줄은 범용 폴백으로 처리되며, 로컬 **learnings
-> 원장**(`ue-log learnings`)이 미파싱 라인 템플릿을 보고해 실제 갭을 파서 후보로 드러냅니다. 실
+> 원장**(`gamedev-log learnings`)이 미파싱 라인 템플릿을 보고해 실제 갭을 파서 후보로 드러냅니다. 실
 > Unity/Godot 로그 샘플(sanitized)은 환영 — 이슈를 열어주세요.
 
 ## Claude가 사용하는 법 (기본 CLI)
-Claude는 **skill**을 통해 `ue-log` CLI를 셸 호출합니다 — **상시 컨텍스트 비용이 없습니다**(로그가
+Claude는 **skill**을 통해 `gamedev-log` CLI를 셸 호출합니다 — **상시 컨텍스트 비용이 없습니다**(로그가
 실제로 관련될 때까지 프롬프트에 아무것도 안 올라감). "에디터 로그 확인해줘" / "뭐가 로그를 도배해?" /
-"지난 실행 대비 뭐가 바뀌었어?"라고 묻거나 `/ue-log-analyzer:logs` 명령을 쓰면 됩니다. 내부 실행:
+"지난 실행 대비 뭐가 바뀌었어?"라고 묻거나 `/gamedev-log-analyzer:logs` 명령을 쓰면 됩니다. 내부 실행:
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/server/cli.js" <command> [--flags]
 ```
 
-**명령어**(`ue-log <command>`): `detect`, `summary`, `search`, `fields`, `diff`, `locate`, `tail`,
+**명령어**(`gamedev-log <command>`): `detect`, `summary`, `search`, `fields`, `diff`, `locate`, `tail`,
 `learnings`, `learnings-reset`, `setup`, `config`.
 
 ```bash
@@ -92,7 +92,7 @@ node server/cli.js --help
 # 1) MCP SDK 1회 설치 (CLI는 의존성 0, MCP 서버만 필요)
 cd server && npm install && cd ..
 # 2) 플러그인 루트에 .mcp.json 추가 후 /reload-plugins:
-#    { "mcpServers": { "ue-log": { "command": "node",
+#    { "mcpServers": { "gamedev-log": { "command": "node",
 #      "args": ["${CLAUDE_PLUGIN_ROOT}/server/index.js"] } } }
 ```
 
@@ -106,24 +106,24 @@ cd server && npm install && cd ..
 ## 설치
 ```bash
 /plugin marketplace add JSungMin/rider-mcp-enforcer
-/plugin install ue-log-analyzer@rider-mcp-enforcer
+/plugin install gamedev-log-analyzer@rider-mcp-enforcer
 /reload-plugins
-/ue-log-analyzer:logs                         # 또는 "에디터 로그 확인해줘"
+/gamedev-log-analyzer:logs                         # 또는 "에디터 로그 확인해줘"
 ```
 빌드도, `npm install`도 없음 — CLI는 순수 Node. (`rider-mcp-enforcer`를 설치하면 이것도 자동으로 함께
 설치됩니다.) 타입드 MCP 도구를 원하면 [선택: MCP 서버 켜기](#선택-mcp-서버-켜기) 참고.
 
 ## 설정
-설정은 `~/.ue-log-analyzer/config.json` (우선순위: env > config > 기본값). `ue-log setup …`(예:
+설정은 `~/.gamedev-log-analyzer/config.json` (우선순위: env > config > 기본값). `gamedev-log setup …`(예:
 `node server/cli.js setup --projectPath "<dir>"`) 또는 환경변수로 설정:
 
 | env | config 키 | 기본값 | 의미 |
 | --- | --- | --- | --- |
-| `UELOG_PROJECT_PATH` | `projectPath` | — | 프로젝트 루트; UE 로그를 `<root>/Saved/Logs`(서브 1단계 포함)에서 자동탐지. |
-| `UELOG_PATH` | `logPath` | — | 명시 기본 로그 파일. |
-| `UELOG_MAX_BYTES` | `logMaxBytes` | `5000000` | 거대 로그는 마지막 N바이트만 읽음. |
-| `UELOG_MAX_GROUPS` | `maxGroups` | `40` | `log_search` 당 최대 dedup 그룹. |
-| `UELOG_MAX_LINE_CHARS` | `maxLineChars` | `200` | 표시 스니펫 최대 글자수. |
+| `GDLOG_PROJECT_PATH` | `projectPath` | — | 프로젝트 루트; UE 로그를 `<root>/Saved/Logs`(서브 1단계 포함)에서 자동탐지. |
+| `GDLOG_PATH` | `logPath` | — | 명시 기본 로그 파일. |
+| `GDLOG_MAX_BYTES` | `logMaxBytes` | `5000000` | 거대 로그는 마지막 N바이트만 읽음. |
+| `GDLOG_MAX_GROUPS` | `maxGroups` | `40` | `log_search` 당 최대 dedup 그룹. |
+| `GDLOG_MAX_LINE_CHARS` | `maxLineChars` | `200` | 표시 스니펫 최대 글자수. |
 
 ## rider-mcp-enforcer와 함께
 로그 항목은 `file:line`을 담습니다. [rider-mcp-enforcer](../README.ko.md)도 설치돼 있으면 그 위치를

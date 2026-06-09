@@ -1,22 +1,22 @@
 #!/usr/bin/env node
 /*
- * ue-log — CLI front-end for ue-log-analyzer (no MCP, no IDE).
+ * gamedev-log — CLI front-end for gamedev-log-analyzer (no MCP, no IDE).
  * Same engine as the MCP server: both call runTool() in core.js, so output is identical.
  * Zero always-on context cost (invoked via the shell), and portable to any agent/script/CI.
  *
- * Usage:  ue-log <command> [--flag value | --flag=value | --bare]
- * Commands: detect search summary fields diff tail learnings learnings-reset setup config
+ * Usage:  gamedev-log <command> [--flag value | --flag=value | --bare]
+ * Commands: detect search summary fields diff locate tail learnings learnings-reset setup config
  * Examples:
- *   ue-log detect --projectPath /path/to/UEProject
- *   ue-log search --path Editor.log --severityMin Error --groupBy callsite
- *   ue-log fields --path trace.log --fields Pawn,Alpha,ts --query Tick --max 20
- *   ue-log diff --pathA before.log --pathB after.log --severityMin Error
+ *   gamedev-log detect --projectPath /path/to/UEProject
+ *   gamedev-log search --path Editor.log --severityMin Error --groupBy callsite
+ *   gamedev-log fields --path trace.log --fields Pawn,Alpha,ts --query Tick --max 20
+ *   gamedev-log diff --pathA before.log --pathB after.log --severityMin Error
  */
 import { runTool } from "./core.js";
 
-const HELP = `ue-log — token-efficient editor-log analysis (Unreal/Unity/generic).
+const HELP = `gamedev-log — token-efficient game-engine/build log analysis (Unreal/Unity/Godot/build).
 
-Usage: ue-log <command> [options]
+Usage: gamedev-log <command> [options]
 
 Commands:
   detect            Find editor logs (newest first).               [--projectPath]
@@ -36,7 +36,7 @@ Commands:
   config            Show effective settings.
 
 Field forms (fields/diff): Key, Key.x|.y|.z, Key.Y|.P|.R, ts, dts, d:Key, step:Key.
-Settings precedence: env (UELOG_*) > ~/.ue-log-analyzer/config.json > default.`;
+Settings precedence: env (GDLOG_*) > ~/.gamedev-log-analyzer/config.json > default.`;
 
 // Flags that should be parsed as comma-separated lists.
 const LIST_FLAGS = new Set(["fields", "window"]);

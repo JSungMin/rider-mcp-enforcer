@@ -1,4 +1,4 @@
-# ue-log-analyzer
+# gamedev-log-analyzer
 
 **English** · [한국어](README.ko.md) · part of the [rider-mcp-enforcer marketplace](../README.md#marketplace--two-plugins)
 
@@ -53,21 +53,21 @@ scalar columns that decide the answer.
 
 > ⚠️ **Unity-deep and Godot parsing are best-effort from each engine's public docs/console output — they
 > have NOT been verified against real Unity/Godot project logs yet.** Unrecognized lines still get the
-> generic fallback, and the local **learnings ledger** (`ue-log learnings`) reports templated shapes of
+> generic fallback, and the local **learnings ledger** (`gamedev-log learnings`) reports templated shapes of
 > unparsed lines so real-world gaps surface as concrete parser candidates. Real Unity/Godot log samples
 > (sanitized) are very welcome — please open an issue.
 
 ## How Claude uses it (CLI by default)
-Claude reaches the analyzer through a **skill** that shells out to the `ue-log` CLI — there is **no
+Claude reaches the analyzer through a **skill** that shells out to the `gamedev-log` CLI — there is **no
 always-on context cost** (nothing sits in the prompt until a log is actually relevant). Just ask
 "check the editor logs" / "what's flooding the log" / "what changed since the last run", or run the
-`/ue-log-analyzer:logs` command. Under the hood it runs:
+`/gamedev-log-analyzer:logs` command. Under the hood it runs:
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/server/cli.js" <command> [--flags]
 ```
 
-**Commands** (`ue-log <command>`): `detect`, `summary`, `search`, `fields`, `diff`, `locate`, `tail`,
+**Commands** (`gamedev-log <command>`): `detect`, `summary`, `search`, `fields`, `diff`, `locate`, `tail`,
 `learnings`, `learnings-reset`, `setup`, `config`.
 
 ```bash
@@ -97,7 +97,7 @@ Turn it on if you prefer typed tools / structured args (no shell quoting):
 # 1) install the MCP SDK once (the CLI needs no deps; the MCP server does)
 cd server && npm install && cd ..
 # 2) add .mcp.json at the plugin root, then /reload-plugins:
-#    { "mcpServers": { "ue-log": { "command": "node",
+#    { "mcpServers": { "gamedev-log": { "command": "node",
 #      "args": ["${CLAUDE_PLUGIN_ROOT}/server/index.js"] } } }
 ```
 
@@ -111,25 +111,25 @@ This exposes `log_detect`, `log_summary`, `log_search`, `log_fields`, `log_diff`
 ## Install
 ```bash
 /plugin marketplace add JSungMin/rider-mcp-enforcer
-/plugin install ue-log-analyzer@rider-mcp-enforcer
+/plugin install gamedev-log-analyzer@rider-mcp-enforcer
 /reload-plugins
-/ue-log-analyzer:logs                        # or: ask "check the editor logs"
+/gamedev-log-analyzer:logs                        # or: ask "check the editor logs"
 ```
 No build, no `npm install` — the CLI is pure Node. (Installing `rider-mcp-enforcer` also pulls this in
 automatically — see the [marketplace](../README.md#marketplace--two-plugins).) To use typed MCP tools
 instead, see [Optional: enable the MCP server](#optional-enable-the-mcp-server).
 
 ## Setup
-Settings live in `~/.ue-log-analyzer/config.json` (precedence: env > config > default). Configure via
-`ue-log setup …` (e.g. `node server/cli.js setup --projectPath "<dir>"`) or env vars:
+Settings live in `~/.gamedev-log-analyzer/config.json` (precedence: env > config > default). Configure via
+`gamedev-log setup …` (e.g. `node server/cli.js setup --projectPath "<dir>"`) or env vars:
 
 | env | config key | default | meaning |
 | --- | --- | --- | --- |
-| `UELOG_PROJECT_PATH` | `projectPath` | — | Project root; UE logs auto-found under `<root>/Saved/Logs` (incl. one subdir level for the `.uproject` dir). |
-| `UELOG_PATH` | `logPath` | — | Explicit default log file. |
-| `UELOG_MAX_BYTES` | `logMaxBytes` | `5000000` | Huge logs: read only the last N bytes. |
-| `UELOG_MAX_GROUPS` | `maxGroups` | `40` | Max deduped groups per `log_search`. |
-| `UELOG_MAX_LINE_CHARS` | `maxLineChars` | `200` | Max chars per shown snippet. |
+| `GDLOG_PROJECT_PATH` | `projectPath` | — | Project root; UE logs auto-found under `<root>/Saved/Logs` (incl. one subdir level for the `.uproject` dir). |
+| `GDLOG_PATH` | `logPath` | — | Explicit default log file. |
+| `GDLOG_MAX_BYTES` | `logMaxBytes` | `5000000` | Huge logs: read only the last N bytes. |
+| `GDLOG_MAX_GROUPS` | `maxGroups` | `40` | Max deduped groups per `log_search`. |
+| `GDLOG_MAX_LINE_CHARS` | `maxLineChars` | `200` | Max chars per shown snippet. |
 
 ## Pairs with rider-mcp-enforcer
 Log entries carry `file:line`. If [rider-mcp-enforcer](../README.md) is also installed, feed those

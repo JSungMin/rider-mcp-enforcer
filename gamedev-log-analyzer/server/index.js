@@ -1,22 +1,22 @@
 #!/usr/bin/env node
 /*
- * ue-log-analyzer — MCP server (thin adapter over core.js).
- * Detects and analyzes editor logs (Unreal Saved/Logs, Unity Editor.log, or any
- * structured text log): parse → classify by severity/category → dedup spam →
- * search/filter/diff, and a generic `log_fields` columnar extractor for trace logs.
+ * gamedev-log-analyzer — MCP server (thin adapter over core.js).
+ * Detects and analyzes game-engine/build logs (Unreal Saved/Logs, Unity Editor.log, Godot
+ * output, MSVC/UBT/MSBuild, or any structured text log): parse → classify by severity/category →
+ * dedup spam → search/filter/diff/locate, and a generic `log_fields` columnar extractor.
  *
- * All tool logic lives in core.js (shared with the CLI at bin/ue-log.mjs) so there is
+ * All tool logic lives in core.js (shared with the CLI at cli.js, `gamedev-log`) so there is
  * exactly one implementation per tool. This file only maps MCP requests to runTool().
  */
 import { Server, StdioServerTransport, ListToolsRequestSchema, CallToolRequestSchema } from "./sdk.js";
 import { runTool } from "./core.js";
 
-const log = (...a) => console.error("[ue-log-analyzer]", ...a);
+const log = (...a) => console.error("[gamedev-log-analyzer]", ...a);
 
 const TOOLS = [
   {
     name: "log_setup",
-    description: "Configure ue-log-analyzer (projectPath, logPath, …). Writes ~/.ue-log-analyzer/config.json; run /reload-plugins after.",
+    description: "Configure gamedev-log-analyzer (projectPath, logPath, …). Writes ~/.gamedev-log-analyzer/config.json; run /reload-plugins after.",
     inputSchema: {
       type: "object",
       properties: {
@@ -30,7 +30,7 @@ const TOOLS = [
   },
   {
     name: "log_config",
-    description: "Show current effective ue-log-analyzer settings + config-file path.",
+    description: "Show current effective gamedev-log-analyzer settings + config-file path.",
     inputSchema: { type: "object", properties: {} },
   },
   {
@@ -151,7 +151,7 @@ const TOOLS = [
   },
 ];
 
-const server = new Server({ name: "ue-log", version: "0.1.0" }, { capabilities: { tools: {} } });
+const server = new Server({ name: "gamedev-log", version: "0.3.0" }, { capabilities: { tools: {} } });
 server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
 server.setRequestHandler(CallToolRequestSchema, async (req) => {
   const { text, isError } = runTool(req.params.name, req.params.arguments || {});
