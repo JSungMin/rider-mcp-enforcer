@@ -247,7 +247,7 @@ Check what's installed with `/plugin` (it lists each plugin's version). If a com
 | --- | --- | --- |
 | `RIDER_MCP_SSE_URL` | — (required) | Rider MCP SSE URL from "Copy SSE Config". Without it the proxy returns setup instructions and Claude falls back to grep. |
 | `RIDER_MAX_RESULTS` | `50` | Max `file:line` lines kept per summarized response. |
-| `RIDER_SUMMARIZE_TOOLS` | `search_symbol,search_file,search_text,search_regex,search_in_files_by_text,search_in_files_by_regex,find_files_by_name_keyword,find_files_by_glob` | Which Rider tool responses to summarize. |
+| `RIDER_SUMMARIZE_TOOLS` | _(auto)_ | Optional **restrict** filter — comma list of tool names allowed to be summarized. By default the proxy summarizes **any list-shaped response** (decided by response shape, not name), so non-list tools like `read_file` are never touched and Rider tool renames need no config. |
 | `RIDER_PROJECT_PATH` | — | Default project path the proxy injects when a tool call omits `projectPath`. Set this when multiple projects are open in Rider (otherwise Rider errors "Unable to determine the target project"). Get it from the "Currently open projects" list in that error, or the project root. |
 | `RIDER_ESCALATE` | `1` | `0`/`false`/`off` disables auto-escalation (see below). |
 | `RIDER_ESCALATE_LIMIT` | `500` | When a result looks truncated, the proxy re-fetches once with this larger limit to learn the true count. |
@@ -318,6 +318,10 @@ Rider — MCP is off or the URL is wrong.
 
 ## Changelog
 
+- **0.1.10** — self-learning tool map: what gets summarized is now decided by **response shape**
+  (Rider's list JSON), not a hardcoded tool-name list. Auto-adapts to Rider version/tool renames,
+  never trims non-list tools like `read_file`, and auto-escalation only fires on tools whose schema
+  has a `limit`. `RIDER_SUMMARIZE_TOOLS` becomes an optional restrict filter.
 - **0.1.9** — one-step install: declares `ue-log-analyzer` as a dependency (one `/plugin install` gets
   both), and the proxy's `npm install` runs automatically on session start (`${CLAUDE_PLUGIN_DATA}` +
   dynamic SDK resolution) — no manual `npm install`.

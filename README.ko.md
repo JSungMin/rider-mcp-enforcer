@@ -256,7 +256,7 @@ Claude Code는 마켓플레이스 repo를 캐시하므로 새 커밋이 **자동
 | `RIDER_MAX_LINE_CHARS` | `200` | 매치 코드 스니펫 한 줄 최대 글자수(거대한 생성 라인이 토큰을 터뜨리는 것 방지). |
 | `RIDER_EXCLUDE` | `/intermediate/,/binaries/,/build/,/saved/,/deriveddatacache/,/.vs/,/.idea/,/node_modules/,.vcxproj,.sln,.filters` | 결과에서 제외할 경로 부분문자열(대소문자 무시) 콤마 목록 — 빌드 산출물/생성물 노이즈. |
 | `RIDER_EXCLUDE_OFF` | `0` | `1`/`true`/`on`이면 제외 경로도 결과에 포함. |
-| `RIDER_SUMMARIZE_TOOLS` | `search_symbol,search_file,search_text,search_regex,search_in_files_by_text,search_in_files_by_regex,find_files_by_name_keyword,find_files_by_glob` | 응답을 요약할 Rider 도구 이름들. |
+| `RIDER_SUMMARIZE_TOOLS` | _(자동)_ | 선택 **제한** 필터 — 요약 허용할 도구 이름 콤마 목록. 기본은 **list 형태 응답이면 무엇이든** 요약(이름이 아니라 응답 형태로 판단) → `read_file` 같은 비-list 도구는 절대 안 건드리고 Rider 도구 rename도 설정 불필요. |
 | `RIDER_STATS_FILE` | `~/.rider-mcp-enforcer/stats.json` | 누적 토큰 절감 ledger 파일 경로. |
 | `RIDER_ENFORCE` | `1` | `0`/`false`/`off`이면 **grep 차단 훅 비활성** — Rider MCP가 꺼져 있어 코드 검색이 막히는 걸 원치 않을 때 사용. |
 
@@ -317,6 +317,9 @@ Claude Code에서 `rider-search` 서버가 실제 Rider 도구들(`search_symbol
 
 ## Changelog
 
+- **0.1.10** — 자가학습 tool map: 무엇을 요약할지 하드코딩 이름목록이 아니라 **응답 형태**(Rider list
+  JSON)로 판단. Rider 버전/도구 rename에 자동 적응, `read_file` 같은 비-list 도구 절대 미변형, 자동
+  증액은 `limit` 스키마 있는 도구만. `RIDER_SUMMARIZE_TOOLS`는 선택 제한 필터로.
 - **0.1.9** — 한 번에 설치: `ue-log-analyzer`를 의존성으로 선언(한 번 `/plugin install`로 둘 다) +
   프록시 `npm install`을 세션 시작 시 자동 실행(`${CLAUDE_PLUGIN_DATA}` + 동적 SDK 해석) — 수동 npm 불필요.
 - **0.1.8** — 훅 수정: 세그먼트의 **실제 명령**이 검색도구일 때만 차단(`node setup.mjs`/`cd`나

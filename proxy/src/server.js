@@ -67,18 +67,27 @@ const EXCLUDE = String(
   .map((s) => s.trim().toLowerCase())
   .filter(Boolean);
 const STATS_FILE = cfg("RIDER_STATS_FILE", "statsFile", path.join(CONFIG_DIR, "stats.json"));
-const SUMMARIZE = new Set(
-  String(
-    cfg(
-      "RIDER_SUMMARIZE_TOOLS",
-      "summarizeTools",
-      "search_symbol,search_file,search_text,search_regex,search_in_files_by_text,search_in_files_by_regex,find_files_by_name_keyword,find_files_by_glob"
-    )
-  )
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean)
-);
+// What gets summarized is decided by the RESPONSE SHAPE, not the tool name: a response that parses
+// as Rider's list JSON (`{items:[...]}`) is compacted; anything else (file contents, status, etc.)
+// passes through untouched. This auto-adapts to Rider version/tool changes with zero config and
+// cannot mangle non-list tools like read_file. Optional RIDER_SUMMARIZE_TOOLS restricts which tool
+// names may be summarized (back-compat); unset = summarize any list response.
+const SUMMARIZE_RESTRICT = (() => {
+  const raw = process.env.RIDER_SUMMARIZE_TOOLS ?? fileCfg.summarizeTools;
+  if (raw === undefined || raw === null || raw === "") return null;
+  return new Set(String(raw).split(",").map((s) => s.trim()).filter(Boolean));
+})();
+// Name heuristic used ONLY for the cosmetic "[PREFERRED]" hint in the tool list.
+const SEARCHY_NAME_RE = /(^|_)(search|find)(_|$)|usage|reference|symbol/i;
+let limitTools = new Set(); // tools whose inputSchema has a `limit` property (gates auto-escalation)
+function learnToolMap(tools) {
+  limitTools = new Set(
+    tools
+      .filter((t) => t && t.inputSchema && t.inputSchema.properties && "limit" in t.inputSchema.properties)
+      .map((t) => t.name)
+  );
+}
+const isSummarizable = (name, info) => !!info && (!SUMMARIZE_RESTRICT || SUMMARIZE_RESTRICT.has(name));
 
 const log = (...a) => console.error("[rider-search-proxy]", ...a);
 
@@ -280,16 +289,7 @@ function summarizeSearch(info, { escalated, fetchedLimit }) {
 // Public entry: summarize a (possibly escalated) result for a search tool + record savings.
 function summarize(result, meta = {}) {
   const info = parseSearch(result);
-  if (!info) {
-    // not the items-JSON shape → fall back to line trimming on text parts
-    if (!result || !Array.isArray(result.content)) return result;
-    return {
-      ...result,
-      content: result.content.map((p) =>
-        p.type === "text" && typeof p.text === "string" ? summarizeLines(p) : p
-      ),
-    };
-  }
+  if (!info) return result; // not a list response → pass through untouched (never trim file contents)
   const { text, excluded } = summarizeSearch(info, meta);
   const rawTok = tok((result.content || []).map((p) => p.text || "").join("\n"));
   recordSavings(rawTok, tok(text), excluded);
@@ -382,13 +382,14 @@ async function main() {
       };
     }
     const { tools } = await rider.listTools();
+    learnToolMap(tools); // auto-derive the summarize set + limit-capable tools from the live list
     return {
       tools: [
         ...SAVINGS_TOOLS,
         ...tools.map((t) => ({
           ...t,
           description:
-            (SUMMARIZE.has(t.name)
+            (SEARCHY_NAME_RE.test(t.name)
               ? "[PREFERRED over Bash grep — Rider live index, summarized & token-capped] "
               : "") + (t.description || ""),
         })),
@@ -468,16 +469,19 @@ async function main() {
         ],
       };
     }
-    if (!SUMMARIZE.has(name)) return result;
+    // Decide by response shape: only a list response (and one allowed by the optional restrict
+    // filter) is summarized; everything else (file contents, status, …) passes through untouched.
+    let info = parseSearch(result);
+    if (!isSummarizable(name, info)) return result;
 
     // Auto-escalate once: if the first fetch looks truncated, re-fetch with a larger
     // limit so the true count is known, then summarize with an accurate notice.
+    // Only when the tool actually accepts a `limit` (learned from its schema).
     let meta = { escalated: false, fetchedLimit: Number(args.limit) || null };
-    const info = parseSearch(result);
     const callerLimit = Number(args.limit) || 0;
-    const looksTruncated =
-      info && (info.more || info.items.length > MAX_RESULTS);
-    if (ESCALATE && looksTruncated && callerLimit < ESCALATE_LIMIT) {
+    const acceptsLimit = limitTools.size === 0 || limitTools.has(name);
+    const looksTruncated = info.more || info.items.length > MAX_RESULTS;
+    if (ESCALATE && acceptsLimit && looksTruncated && callerLimit < ESCALATE_LIMIT) {
       try {
         const big = await rider.callTool({
           name,
