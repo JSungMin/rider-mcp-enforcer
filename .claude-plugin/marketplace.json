@@ -15,7 +15,7 @@
     {
       "name": "ue-log-analyzer",
       "source": "./ue-log-analyzer",
-      "version": "0.2.1",
+      "version": "0.3.0",
       "description": "Token-efficient editor-log analysis (Unreal/Unity/generic): parse, dedup, classify by severity/category, callsite rollup, and decisive-field extraction. No IDE required."
     }
   ]

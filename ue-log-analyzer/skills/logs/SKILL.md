@@ -1,8 +1,9 @@
 ---
 name: ue-log-analyzer
 description: >-
-  Analyze an editor or build log (Unreal Engine Saved/Logs, Unity Editor.log, MSVC/UBT/C# build
-  output, or any structured text log) token-efficiently. Use when the user mentions checking,
+  Analyze an editor or build log (Unreal Engine Saved/Logs, Unity Editor.log, Godot output,
+  MSVC/UBT/MSBuild build output, or any structured text log) token-efficiently. Use when the user
+  mentions checking,
   reading, searching, summarizing, or diffing a log; investigating editor/engine errors, warnings,
   crashes, asserts, callstacks, or log spam; or asks "what's flooding the log" / "what changed since
   the last run". Parses, deduplicates, classifies by severity/category, and extracts decisive fields
@@ -14,6 +15,11 @@ description: >-
 Read logs through the **`ue-log` CLI**, never `cat`/`grep`/`Get-Content` the raw file — editor logs
 are routinely tens of MB and will flood the context. The CLI parses → classifies → deduplicates →
 returns a compact, token-capped summary (often ~99% smaller than the raw log).
+
+> Engine coverage: **Unreal runtime + MSVC/UBT/MSBuild/Unity-C# build errors are live-verified.**
+> **Unity-deep and Godot parsing are best-effort from public docs and NOT yet verified against real
+> Unity/Godot logs** — say so if you report Unity/Godot results, and run `ue-log learnings` to see what
+> went unparsed.
 
 ## How to run it
 

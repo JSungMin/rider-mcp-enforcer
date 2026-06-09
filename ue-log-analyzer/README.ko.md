@@ -27,13 +27,32 @@ Unity `Editor.log`는 보통 수십 MB의 반복 스팸이라 `cat`/`grep`하면
 
 ## 무엇을 하나
 
-- 각 줄을 `{severity, category, file:line, message}`로 **파싱** — Unreal 런타임, 빌드/컴파일 에러,
-  Unity, 범용 폴백.
+- 각 줄을 `{severity, category, file:line, message}`로 **파싱** — 여러 엔진 지원(아래 지원 매트릭스),
+  미인식 줄은 범용 severity-키워드 폴백.
 - **템플릿 dedup:** 숫자/주소/GUID/경로/인스턴스ID 정규화 → 반복 스팸을 `×count` 한 그룹으로.
 - **검색/필터:** `severityMin`·`category`·`file`·`query`; `groupBy:"callsite"`는 `file:line`별 롤업
   (로그를 뭐가 도배하는지 파악에 최적).
 - **`log_fields`:** dense 프레임 로그용 범용 컬럼 추출 — 선택 스칼라만 (`Key`, `Key.x|.y|.z`,
   `Key.Y|.P|.R`, `ts`, `dts`, `d:Key`, `step:Key`).
+- **`log_diff`:** 두 로그 비교 후 **델타만**(신규/사라짐/카운트변경, 변경없는 그룹 생략).
+- **`log_locate`:** 매칭 엔트리의 distinct `file:line` 점프 리스트(소스 열기용).
+
+## 지원 로그 포맷
+
+| 소스 | 예시 | 카테고리 | 검증 |
+| --- | --- | --- | --- |
+| **Unreal 런타임** | `[..][f]LogTemp: Error: msg` | `Log*` | ✅ 라이브 검증(18–57 MB 실로그) |
+| **MSVC/UBT/MSBuild 컴파일** | `Foo.cpp(120): error C2065: msg` | `Build` | ✅ 라이브 검증 |
+| **MSVC/UBT 링커** | `Foo.obj : error LNK2019: msg` | `Build` | ✅ 라이브 검증 |
+| **Unity C# 컴파일** | `Assets/X.cs(12,34): error CS1002: msg` | `Build` | ✅ 검증(컴파일 경로 공유) |
+| **Unity 런타임/스택** | `NullReferenceException …`, `(at Assets/X.cs:42)` | 범용+위치 | ⚠️ best-effort — 실 Unity 로그 **미검증** |
+| **Godot** | `SCRIPT ERROR: …`, `at: f (res://x.gd:42)` | `Godot` | ⚠️ best-effort — 실 Godot 로그 **미검증** |
+| **그 외** | severity 키워드(`error`/`warning`/`exception`/…) | 범용+위치 | 부분 폴백 |
+
+> ⚠️ **Unity 심층 및 Godot 파싱은 각 엔진 공개 문서/콘솔 출력 기반 best-effort로, 실제 Unity/Godot
+> 프로젝트 로그에 대해 아직 검증되지 않았습니다.** 미인식 줄은 범용 폴백으로 처리되며, 로컬 **learnings
+> 원장**(`ue-log learnings`)이 미파싱 라인 템플릿을 보고해 실제 갭을 파서 후보로 드러냅니다. 실
+> Unity/Godot 로그 샘플(sanitized)은 환영 — 이슈를 열어주세요.
 
 ## Claude가 사용하는 법 (기본 CLI)
 Claude는 **skill**을 통해 `ue-log` CLI를 셸 호출합니다 — **상시 컨텍스트 비용이 없습니다**(로그가
