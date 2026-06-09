@@ -2,6 +2,12 @@
 
 **English** · [한국어](README.ko.md) · part of the [rider-mcp-enforcer marketplace](../README.md#marketplace--two-plugins)
 
+[![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-7C3AED)](https://code.claude.com/docs/en/plugins)
+[![MCP](https://img.shields.io/badge/MCP-server-1f6feb)](https://modelcontextprotocol.io)
+[![version](https://img.shields.io/badge/version-0.1.1-blue)](../.claude-plugin/marketplace.json)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](../LICENSE)
+[![Stars](https://img.shields.io/github/stars/JSungMin/rider-mcp-enforcer?style=social)](https://github.com/JSungMin/rider-mcp-enforcer/stargazers)
+
 A **Claude Code plugin** that reads huge editor logs **token-efficiently**. Unreal `Saved/Logs/*.log`
 and Unity `Editor.log` are often tens of MB of repeated spam — `cat`/`grep` floods the context. This
 plugin parses, **deduplicates**, and classifies them instead. **No IDE required** — pure file parsing.
