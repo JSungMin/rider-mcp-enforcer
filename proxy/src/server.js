@@ -37,7 +37,7 @@ const ESCALATE = !["0", "false", "off"].includes(
   String(process.env.RIDER_ESCALATE ?? "1").toLowerCase()
 );
 const ESCALATE_LIMIT = parseInt(process.env.RIDER_ESCALATE_LIMIT || "500", 10) || 500;
-// Cap each result's code snippet so one giant line (e.g. a generated .vcxproj IncludePath)
+// Cap each result's code snippet so one giant line (e.g. a long generated build-file line)
 // cannot blow the token budget.
 const MAX_LINE_CHARS = parseInt(process.env.RIDER_MAX_LINE_CHARS || "200", 10) || 200;
 // Real Rider MCP (2025.2+) search/symbol tools whose JSON responses we compact.
