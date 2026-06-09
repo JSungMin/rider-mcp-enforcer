@@ -1,0 +1,207 @@
+/*
+ * ue-log-analyzer core — transport-agnostic dispatch.
+ * Both the MCP server (index.js) and the CLI (bin/ue-log.mjs) call runTool(name, args)
+ * and render the SAME text, so there is exactly one implementation of each tool.
+ * Pure file parsing. Settings: env var > ~/.ue-log-analyzer/config.json > default.
+ */
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { detectLogs, readText, analyzeLog, extractFields, collectLearnings, diffLogs } from "./logs.js";
+
+const CONFIG_DIR = path.join(os.homedir(), ".ue-log-analyzer");
+export const CONFIG_FILE = process.env.UELOG_CONFIG_FILE || path.join(CONFIG_DIR, "config.json");
+let fileCfg = {};
+try {
+  fileCfg = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8")) || {};
+} catch {
+  /* no config yet */
+}
+function cfg(envName, key, def) {
+  const e = process.env[envName];
+  if (e !== undefined && e !== "") return e;
+  const v = fileCfg[key];
+  if (v !== undefined && v !== null && v !== "") return v;
+  return def;
+}
+export const PROJECT_PATH = cfg("UELOG_PROJECT_PATH", "projectPath", "");
+export const LOG_PATH = cfg("UELOG_PATH", "logPath", "");
+export const LOG_MAX_BYTES = parseInt(cfg("UELOG_MAX_BYTES", "logMaxBytes", "5000000"), 10) || 5000000;
+export const MAX_GROUPS = parseInt(cfg("UELOG_MAX_GROUPS", "maxGroups", "40"), 10) || 40;
+export const MAX_LINE_CHARS = parseInt(cfg("UELOG_MAX_LINE_CHARS", "maxLineChars", "200"), 10) || 200;
+const CONFIG_KEYS = ["projectPath", "logPath", "logMaxBytes", "maxGroups", "maxLineChars"];
+
+function resolveLogPath(a) {
+  if (a && a.path) return a.path;
+  if (LOG_PATH) return LOG_PATH;
+  return detectLogs((a && a.projectPath) || PROJECT_PATH)[0] || "";
+}
+function applySetup(args) {
+  let current = {};
+  try {
+    current = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8")) || {};
+  } catch {
+    /* new */
+  }
+  const changed = [];
+  for (const k of CONFIG_KEYS)
+    if (args[k] !== undefined) {
+      current[k] = args[k];
+      changed.push(k);
+    }
+  fs.mkdirSync(path.dirname(CONFIG_FILE), { recursive: true });
+  fs.writeFileSync(CONFIG_FILE, JSON.stringify(current, null, 2));
+  return { current, changed };
+}
+
+// ---- learnings ledger (local, sanitized; never transmitted) ----
+const LEARN_FILE = cfg("UELOG_LEARN_FILE", "learnFile", path.join(CONFIG_DIR, "learnings.json"));
+const readLearn = () => {
+  try { return JSON.parse(fs.readFileSync(LEARN_FILE, "utf8")) || {}; } catch { return {}; }
+};
+function recordLearnings(text) {
+  const l = collectLearnings(text);
+  const s = readLearn();
+  s.runs = (s.runs || 0) + 1;
+  s.totalLines = (s.totalLines || 0) + l.total;
+  s.parsedLines = (s.parsedLines || 0) + l.parsed;
+  s.categories = s.categories || {};
+  for (const { k, v } of l.categories) s.categories[k] = (s.categories[k] || 0) + v;
+  s.misses = s.misses || {};
+  for (const { k, v } of l.misses) s.misses[k] = (s.misses[k] || 0) + v;
+  try {
+    fs.mkdirSync(path.dirname(LEARN_FILE), { recursive: true });
+    fs.writeFileSync(LEARN_FILE, JSON.stringify(s, null, 2));
+  } catch {
+    /* best-effort */
+  }
+}
+function learningsReport() {
+  const s = readLearn();
+  if (!s.runs) return "No learnings yet — run log_search / log_summary on some logs first.";
+  const cov = s.totalLines ? Math.round((s.parsedLines / s.totalLines) * 100) : 100;
+  const top = (o, n) => Object.entries(o || {}).sort((a, b) => b[1] - a[1]).slice(0, n);
+  const cats = top(s.categories, 10).map(([k, v]) => `  ${k}: ${v}`).join("\n") || "  (none)";
+  const miss = top(s.misses, 8).map(([k, v]) => `  ×${v}  ${k}`).join("\n") || "  (none — full coverage)";
+  return (
+    `ue-log-analyzer learnings (local, ${s.runs} run(s))\n` +
+    `  parse coverage: ${cov}% (${s.parsedLines}/${s.totalLines} lines)\n\n` +
+    `Top categories (filter noisy ones with category=, or they collapse via dedup):\n${cats}\n\n` +
+    `Unparsed line shapes (a new parser/category could cover these — please open an issue):\n${miss}\n\n` +
+    `Ledger: ${LEARN_FILE}`
+  );
+}
+
+// ---- single dispatcher used by BOTH the MCP server and the CLI ----
+// Returns { text, isError }. The transport (MCP / CLI) decides how to render it.
+export function runTool(name, a = {}) {
+  const err = (text) => ({ text, isError: true });
+  const out = (text) => ({ text, isError: false });
+  try {
+    if (name === "log_setup") {
+      const { current, changed } = applySetup(a);
+      return out(
+        (changed.length ? `Updated ${changed.join(", ")}.` : "No recognized keys; nothing changed.") +
+          `\nConfig: ${CONFIG_FILE}\n${JSON.stringify(current, null, 2)}\n\nRun /reload-plugins to apply.`
+      );
+    }
+    if (name === "log_config") {
+      return out(
+        `Effective settings (env > config > default):\n` +
+          JSON.stringify({ projectPath: PROJECT_PATH || "(unset)", logPath: LOG_PATH || "(auto)", logMaxBytes: LOG_MAX_BYTES, maxGroups: MAX_GROUPS, maxLineChars: MAX_LINE_CHARS }, null, 2) +
+          `\n\nConfig file: ${CONFIG_FILE}`
+      );
+    }
+    if (name === "log_learnings") return out(learningsReport());
+    if (name === "log_learnings_reset") {
+      try { fs.writeFileSync(LEARN_FILE, "{}"); } catch { /* ignore */ }
+      return out("Learnings ledger cleared.");
+    }
+    if (name === "log_detect") {
+      const found = detectLogs(a.projectPath || PROJECT_PATH);
+      return out(
+        found.length
+          ? `Editor logs (newest first):\n${found.map((p) => "  " + p).join("\n")}\nUse log_search { "path": "${found[0]}" }.`
+          : `No editor logs found. Pass a path, set logPath, or projectPath (looked under <project>/Saved/Logs and Unity Editor.log).`
+      );
+    }
+    if (name === "log_diff") {
+      let pa = a.pathA,
+        pb = a.pathB;
+      if (!pa || !pb) {
+        const found = detectLogs(a.projectPath || PROJECT_PATH);
+        if (found.length < 2)
+          return err(
+            `Need two logs to diff. Pass pathA + pathB, or point projectPath at a dir with ≥2 logs ` +
+              `(found ${found.length}).`
+          );
+        pb = pb || found[0]; // newest = after
+        pa = pa || found[1]; // 2nd newest = before
+      }
+      if (!fs.existsSync(pa)) return err(`Base log (A) not found: ${pa}`);
+      if (!fs.existsSync(pb)) return err(`New log (B) not found: ${pb}`);
+      const ta = readText(pa, LOG_MAX_BYTES);
+      const tb = readText(pb, LOG_MAX_BYTES);
+      try { recordLearnings(ta); recordLearnings(tb); } catch { /* best-effort */ }
+      return out(
+        `A (base): ${pa}\nB (new):  ${pb}\n\n` +
+          diffLogs(ta, tb, {
+            query: a.query || "",
+            severityMin: a.severityMin || "Warning",
+            category: a.category || "",
+            file: a.file || "",
+            groupBy: a.groupBy === "callsite" ? "callsite" : "template",
+            minDelta: Number(a.minDelta) > 0 ? Number(a.minDelta) : 1,
+            maxGroups: Number(a.maxGroups) || MAX_GROUPS,
+            maxLineChars: MAX_LINE_CHARS,
+          })
+      );
+    }
+
+    const lp = resolveLogPath(a);
+    if (!lp) return err("No log path. Pass path/projectPath or run log_detect.");
+    if (!fs.existsSync(lp)) return err(`Log not found: ${lp}`);
+
+    if (name === "log_tail") {
+      const n = Number(a.lines) || 80;
+      const tail = readText(lp, LOG_MAX_BYTES).split(/\r?\n/).slice(-n)
+        .map((l) => (l.length > MAX_LINE_CHARS ? l.slice(0, MAX_LINE_CHARS) + " …" : l));
+      return out(`Last ${tail.length} line(s) of ${lp}:\n` + tail.join("\n"));
+    }
+    const text = readText(lp, LOG_MAX_BYTES);
+    try { recordLearnings(text); } catch { /* learnings are best-effort */ }
+    if (name === "log_fields") {
+      return out(
+        `Source: ${lp}\n` +
+          extractFields(text, {
+            fields: Array.isArray(a.fields) && a.fields.length ? a.fields : ["ts"],
+            query: a.query || "",
+            category: a.category || "",
+            file: a.file || "",
+            severityMin: a.severityMin || "Verbose",
+            window: Array.isArray(a.window) && a.window.length === 2 ? a.window : null,
+            max: Number(a.max) || 200,
+            maxLineChars: MAX_LINE_CHARS,
+          })
+      );
+    }
+    if (name === "log_search" || name === "log_summary") {
+      return out(
+        `Source: ${lp}\n` +
+          analyzeLog(text, {
+            query: a.query || "",
+            severityMin: a.severityMin || "Warning",
+            category: a.category || "",
+            file: a.file || "",
+            maxGroups: Number(a.maxGroups) || MAX_GROUPS,
+            maxLineChars: MAX_LINE_CHARS,
+            summaryOnly: name === "log_summary",
+            groupBy: a.groupBy === "callsite" ? "callsite" : "template",
+          })
+      );
+    }
+    return err(`Unknown tool: ${name}`);
+  } catch (e) {
+    return err(`log tool error: ${e.message}`);
+  }
+}

@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "description": "MCP server for ue-log-analyzer — parses/dedups/classifies editor logs.",
-  "bin": { "ue-log-analyzer": "index.js" },
+  "bin": { "ue-log-analyzer": "index.js", "ue-log": "cli.js" },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0"
   },

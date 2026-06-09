@@ -3,7 +3,11 @@
 // data) and measures the core promises: parse coverage, token reduction, dedup collapse, and
 // field-extraction size. Exits non-zero if any metric falls below threshold — a regression guard
 // and a measurable target for future self-improvement. No dependencies (pure logs.js); CI-friendly.
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { analyzeLog, extractFields, parseLine, diffLogs } from "../server/logs.js";
+import { runTool } from "../server/core.js";
 
 // Deterministic synthetic UE-style log (generic names only).
 function makeLog(n) {
@@ -54,6 +58,16 @@ const diffTok = tok(diff);
 const diffHasNew = /\+ NEW/.test(diff);
 const diffVsRaw = 1 - diffTok / rawTok; // honest win: delta vs re-reading the whole log
 
+// hybrid wiring: the shared runTool() (used by BOTH the MCP server and the CLI) must dispatch and
+// produce the same compact output as calling logs.js directly. Guards the core.js refactor.
+const tmp = path.join(os.tmpdir(), "ue-log-eval-core.log");
+fs.writeFileSync(tmp, log);
+const viaCore = runTool("log_search", { path: tmp, severityMin: "Warning", groupBy: "callsite" });
+// runTool prepends "Source: <path>\n" then the exact engine output → must end with it byte-for-byte.
+const engineOut = analyzeLog(log, { severityMin: "Warning", groupBy: "callsite" });
+const coreOk = !viaCore.isError && viaCore.text.endsWith(engineOut);
+try { fs.unlinkSync(tmp); } catch { /* ignore */ }
+
 const rows = [
   ["parse coverage", (coverage * 100).toFixed(1) + "%", "≥ 95%", coverage >= 0.95],
   ["token reduction (callsite)", (reduction * 100).toFixed(1) + "%", "≥ 90%", reduction >= 0.9],
@@ -62,6 +76,7 @@ const rows = [
   ["log_diff tokens (delta-only)", diffTok, "≤ 200", diffTok <= 200],
   ["log_diff surfaces NEW errors", diffHasNew, "true", diffHasNew],
   ["log_diff vs raw log", (diffVsRaw * 100).toFixed(1) + "%", "≥ 99%", diffVsRaw >= 0.99],
+  ["runTool dispatch (MCP=CLI)", coreOk, "true", coreOk],
 ];
 
 console.log(`ue-log-analyzer eval — ${N} synthetic (sanitized) lines\n`);

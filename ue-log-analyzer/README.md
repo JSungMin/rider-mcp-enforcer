@@ -44,6 +44,34 @@ scalar columns that decide the answer.
 - `/ue-log-analyzer:logs` — guided: detect → summary → errors with locations.
 - MCP tools (server `ue-log`): `log_detect`, `log_summary`, `log_search`, `log_fields`, `log_diff`,
   `log_tail`, `log_learnings`, `log_learnings_reset`, `log_setup`, `log_config`.
+- CLI (`ue-log <command>`): the **same** commands as a shell binary — `detect`, `summary`, `search`,
+  `fields`, `diff`, `tail`, `learnings`, `learnings-reset`, `setup`, `config`.
+
+## Two ways to run: MCP or CLI
+The analysis engine ([`server/logs.js`](server/logs.js) + [`server/core.js`](server/core.js)) is
+transport-agnostic — both front-ends call one `runTool()`, so **output is byte-for-byte identical**.
+
+| | MCP server (`index.js`) | CLI (`ue-log`, `cli.js`) |
+| --- | --- | --- |
+| How Claude calls it | `log_*` tools | `Bash: ue-log <cmd>` |
+| Always-on context cost | tool schemas live in the prompt every session (~1–1.5k tok) | **none** — invoked via the shell |
+| Structured args | yes (typed, no shell quoting) | flags (`--severityMin Error`) |
+| Runs outside Claude Code | no | **yes** — scripts, CI, other agents |
+| Needs the MCP SDK | yes | **no** (pure `logs.js`/`core.js`) |
+
+The headline **~99% token reduction is output compression** (dedup/summarize/diff) and is the **same in
+both** — the transport only changes the small always-on overhead. Use the **CLI** when you want zero
+MCP-schema cost or portability; use the **MCP server** when you want typed tools auto-discovered inside
+Claude Code. To run CLI-only, disable the `ue-log` MCP server and call `ue-log …` from Bash.
+
+```bash
+# CLI examples (identical output to the matching log_* tool)
+ue-log detect --projectPath /path/to/UEProject
+ue-log search --path Editor.log --severityMin Error --groupBy callsite
+ue-log fields --path trace.log --fields Pawn,Alpha,ts --query Tick --max 20
+ue-log diff   --pathA before.log --pathB after.log --severityMin Error
+ue-log --help
+```
 
 ## Prerequisites
 - **Node.js ≥ 18** on PATH. (No Rider/Unity install needed — it only reads the log file.)
@@ -76,6 +104,9 @@ locations to its `get_symbol_info` / `read_file` to jump straight to the source.
 [Using both together](../README.md#using-both-together).
 
 ## Changelog
+- **0.1.4** — **CLI front-end** (`ue-log <command>`): same engine as the MCP server (shared `core.js`
+  `runTool`), byte-identical output, but **zero always-on context cost** and portable outside Claude Code
+  (scripts/CI/other agents). MCP server slimmed to a thin adapter. See *Two ways to run*.
 - **0.1.3** — `log_diff`: compare two logs and emit only the delta (new / gone / count-changed groups),
   unchanged groups omitted — token-cheap regression triage across runs. Eval extended with diff metrics.
 - **0.1.2** — local **learnings ledger** (`log_learnings` / `log_learnings_reset`): tracks parse coverage,
