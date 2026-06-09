@@ -1,0 +1,39 @@
+name: test
+on: [push, pull_request]
+
+jobs:
+  test:
+    name: test (${{ matrix.os }}, node ${{ matrix.node }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: ["18", "20", "22"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Install proxy deps
+        working-directory: proxy
+        run: npm install --no-audit --no-fund
+      - name: Proxy unit tests
+        working-directory: proxy
+        run: npm test
+      - name: gamedev-log CLI runs dependency-free
+        run: node gamedev-log-analyzer/server/cli.js config
+      - name: gamedev-log-analyzer eval (token-reduction + parse-coverage gate)
+        run: node gamedev-log-analyzer/eval/run.mjs
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install dev tooling
+        run: npm install --no-audit --no-fund
+      - name: ESLint
+        run: npx eslint .

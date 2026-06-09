@@ -28,6 +28,7 @@ import {
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 // Settings come from (highest precedence first): environment variable > config file
 // (~/.rider-mcp-enforcer/config.json, written by the setup command) > built-in default.
@@ -201,7 +202,13 @@ async function connectRider() {
 
 const tok = (s) => Math.round(Buffer.byteLength(String(s), "utf8") / 4);
 
-function isExcluded(p) {
+// Rider builds a file:// URI from projectPath; a Windows backslash path throws "Illegal character
+// in authority". Forward slashes resolve on every platform. Exported for tests.
+export function normalizeProjectPath(p) {
+  return typeof p === "string" ? p.replace(/\\/g, "/") : p;
+}
+
+export function isExcluded(p) {
   if (EXCLUDE_OFF) return false;
   const lp = p.toLowerCase();
   return EXCLUDE.some((x) => lp.includes(x));
@@ -248,7 +255,7 @@ function savingsReport() {
 }
 
 // Fallback: reduce plain-text content to <= MAX_RESULTS non-empty lines + footer.
-function summarizeLines(part) {
+export function summarizeLines(part) {
   const lines = part.text.split(/\r?\n/).filter((l) => l.trim().length);
   const kept = lines.slice(0, MAX_RESULTS).map((l) => l.trim());
   let text = kept.join("\n");
@@ -259,7 +266,7 @@ function summarizeLines(part) {
 
 // Rider search/symbol tools return JSON: {"items":[{filePath,startLine,lineText,...}],"more":bool}.
 // Extract {items, more} from the first JSON text part, or null if not that shape.
-function parseSearch(result) {
+export function parseSearch(result) {
   if (!result || !Array.isArray(result.content)) return null;
   for (const part of result.content) {
     if (part.type !== "text" || typeof part.text !== "string") continue;
@@ -280,7 +287,7 @@ function parseSearch(result) {
   return null;
 }
 
-function itemLine(it) {
+export function itemLine(it) {
   const p = String(it.filePath ?? it.path ?? it.pathInProject ?? "").replace(/\\/g, "/");
   const line = it.startLine ?? it.line ?? "";
   let txt = String(it.lineText ?? it.text ?? "").trim();
@@ -292,7 +299,7 @@ function itemLine(it) {
 // exhaustive (more items fetched than shown, OR Rider still reports `more`), emit a LOUD
 // INCOMPLETE banner with explicit options so Claude escalates to the user instead of
 // treating a partial set as the full reference list.
-function summarizeSearch(info, { escalated, fetchedLimit }) {
+export function summarizeSearch(info, { escalated, fetchedLimit }) {
   const kept0 = info.items.filter(
     (it) => !isExcluded(String(it.filePath ?? it.path ?? it.pathInProject ?? "").replace(/\\/g, "/"))
   );
@@ -323,7 +330,7 @@ function summarizeSearch(info, { escalated, fetchedLimit }) {
 }
 
 // Public entry: summarize a (possibly escalated) result for a search tool + record savings.
-function summarize(result, meta = {}) {
+export function summarize(result, meta = {}) {
   const info = parseSearch(result);
   if (!info) return result; // not a list response → pass through untouched (never trim file contents)
   const { text, excluded } = summarizeSearch(info, meta);
@@ -490,10 +497,8 @@ async function main() {
     // Inject a default project when the caller omits it (Rider errors when multiple
     // projects are open and projectPath is missing).
     if (PROJECT_PATH && args.projectPath == null) args.projectPath = PROJECT_PATH;
-    // Normalize Windows backslashes to forward slashes: Rider builds a file:// URI from
-    // projectPath, and a backslash path (e.g. D:\Project\fb) throws "Illegal character in
-    // authority" — every search then fails. Forward slashes resolve correctly on all platforms.
-    if (typeof args.projectPath === "string") args.projectPath = args.projectPath.replace(/\\/g, "/");
+    // Normalize Windows backslashes (see normalizeProjectPath) so Rider's file:// URI is valid.
+    args.projectPath = normalizeProjectPath(args.projectPath);
     let result;
     try {
       result = await rider.callTool({ name, arguments: args });
@@ -538,7 +543,13 @@ async function main() {
   log("ready on stdio (MAX_RESULTS=" + MAX_RESULTS + ").");
 }
 
-main().catch((e) => {
-  log("fatal:", e);
-  process.exit(1);
-});
+// Only auto-start when run as the entry point; importing this module (e.g. from tests) must not
+// connect to Rider. The pure helpers above are exported for unit testing.
+const isEntryPoint =
+  process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isEntryPoint) {
+  main().catch((e) => {
+    log("fatal:", e);
+    process.exit(1);
+  });
+}

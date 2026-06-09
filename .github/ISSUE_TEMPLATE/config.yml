@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Question or usage help
+    url: https://github.com/JSungMin/rider-mcp-enforcer#readme
+    about: Check the README and BENCHMARK first — setup, troubleshooting, and tuning live there.

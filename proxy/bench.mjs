@@ -36,7 +36,7 @@ async function bench(name, args) {
   const raw = (r.content || []).map((p) => p.text || "").join("\n");
   const summarized = summarize(raw, MAX);
   let items = "?";
-  try { const j = JSON.parse(raw); if (Array.isArray(j.items)) items = j.items.length + (j.more ? "+" : ""); } catch {}
+  try { const j = JSON.parse(raw); if (Array.isArray(j.items)) items = j.items.length + (j.more ? "+" : ""); } catch { /* keep items as ? */ }
   console.log(
     `${name.padEnd(14)} time=${ms}ms  items=${items}  raw=~${tok(raw)}tok  summarized=~${tok(summarized)}tok`
   );
