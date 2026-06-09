@@ -3,7 +3,7 @@
 **English** · [한국어](README.ko.md) · part of the [rider-mcp-enforcer marketplace](../README.md#marketplace--two-plugins)
 
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-7C3AED)](https://code.claude.com/docs/en/plugins)
-[![MCP](https://img.shields.io/badge/MCP-server-1f6feb)](https://modelcontextprotocol.io)
+[![CLI](https://img.shields.io/badge/CLI-zero%20deps-1f6feb)](#how-claude-uses-it-cli-by-default)
 [![release](https://img.shields.io/github/v/release/JSungMin/rider-mcp-enforcer)](https://github.com/JSungMin/rider-mcp-enforcer/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](../LICENSE)
 [![Stars](https://img.shields.io/github/stars/JSungMin/rider-mcp-enforcer?style=social)](https://github.com/JSungMin/rider-mcp-enforcer/stargazers)
@@ -40,55 +40,66 @@ scalar columns that decide the answer.
   disappeared, and groups whose count changed. Unchanged groups are omitted, so a regression-triage diff
   across runs costs a fraction of re-reading either log.
 
-## Commands & tools
-- `/ue-log-analyzer:logs` — guided: detect → summary → errors with locations.
-- MCP tools (server `ue-log`): `log_detect`, `log_summary`, `log_search`, `log_fields`, `log_diff`,
-  `log_tail`, `log_learnings`, `log_learnings_reset`, `log_setup`, `log_config`.
-- CLI (`ue-log <command>`): the **same** commands as a shell binary — `detect`, `summary`, `search`,
-  `fields`, `diff`, `tail`, `learnings`, `learnings-reset`, `setup`, `config`.
-
-## Two ways to run: MCP or CLI
-The analysis engine ([`server/logs.js`](server/logs.js) + [`server/core.js`](server/core.js)) is
-transport-agnostic — both front-ends call one `runTool()`, so **output is byte-for-byte identical**.
-
-| | MCP server (`index.js`) | CLI (`ue-log`, `cli.js`) |
-| --- | --- | --- |
-| How Claude calls it | `log_*` tools | `Bash: ue-log <cmd>` |
-| Always-on context cost | tool schemas live in the prompt every session (~1–1.5k tok) | **none** — invoked via the shell |
-| Structured args | yes (typed, no shell quoting) | flags (`--severityMin Error`) |
-| Runs outside Claude Code | no | **yes** — scripts, CI, other agents |
-| Needs the MCP SDK | yes | **no** (pure `logs.js`/`core.js`) |
-
-The headline **~99% token reduction is output compression** (dedup/summarize/diff) and is the **same in
-both** — the transport only changes the small always-on overhead. Use the **CLI** when you want zero
-MCP-schema cost or portability; use the **MCP server** when you want typed tools auto-discovered inside
-Claude Code. To run CLI-only, disable the `ue-log` MCP server and call `ue-log …` from Bash.
+## How Claude uses it (CLI by default)
+Claude reaches the analyzer through a **skill** that shells out to the `ue-log` CLI — there is **no
+always-on context cost** (nothing sits in the prompt until a log is actually relevant). Just ask
+"check the editor logs" / "what's flooding the log" / "what changed since the last run", or run the
+`/ue-log-analyzer:logs` command. Under the hood it runs:
 
 ```bash
-# CLI examples (identical output to the matching log_* tool)
-ue-log detect --projectPath /path/to/UEProject
-ue-log search --path Editor.log --severityMin Error --groupBy callsite
-ue-log fields --path trace.log --fields Pawn,Alpha,ts --query Tick --max 20
-ue-log diff   --pathA before.log --pathB after.log --severityMin Error
-ue-log --help
+node "${CLAUDE_PLUGIN_ROOT}/server/cli.js" <command> [--flags]
 ```
 
+**Commands** (`ue-log <command>`): `detect`, `summary`, `search`, `fields`, `diff`, `tail`,
+`learnings`, `learnings-reset`, `setup`, `config`.
+
+```bash
+# Run directly too — in scripts, CI, or any agent (pure Node, no dependencies):
+node server/cli.js detect --projectPath /path/to/UEProject
+node server/cli.js search --path Editor.log --severityMin Error --groupBy callsite
+node server/cli.js fields --path trace.log --fields Pawn,Alpha,ts --query Tick --max 20
+node server/cli.js diff   --pathA before.log --pathB after.log --severityMin Error
+node server/cli.js --help
+```
+
+## Optional: enable the MCP server
+The same engine ([`server/logs.js`](server/logs.js) + [`server/core.js`](server/core.js)) also runs as
+an MCP server (typed `log_*` tools, auto-discovered inside Claude Code). It is **off by default**
+because a connected MCP server injects its tool schemas into **every** session (~1–1.5k tok always-on),
+whereas the CLI costs nothing until used. The headline **~99% reduction is output compression and is
+identical either way** — only the always-on overhead differs.
+
+Turn it on if you prefer typed tools / structured args (no shell quoting):
+
+```bash
+# 1) install the MCP SDK once (the CLI needs no deps; the MCP server does)
+cd server && npm install && cd ..
+# 2) add .mcp.json at the plugin root, then /reload-plugins:
+#    { "mcpServers": { "ue-log": { "command": "node",
+#      "args": ["${CLAUDE_PLUGIN_ROOT}/server/index.js"] } } }
+```
+
+This exposes `log_detect`, `log_summary`, `log_search`, `log_fields`, `log_diff`, `log_tail`,
+`log_learnings`, `log_learnings_reset`, `log_setup`, `log_config` — byte-identical output to the CLI.
+
 ## Prerequisites
-- **Node.js ≥ 18** on PATH. (No Rider/Unity install needed — it only reads the log file.)
+- **Node.js ≥ 18** on PATH. (No Rider/Unity install needed — it only reads the log file. The default
+  CLI path has **zero npm dependencies**; only the optional MCP server needs `npm install`.)
 
 ## Install
 ```bash
 /plugin marketplace add JSungMin/rider-mcp-enforcer
 /plugin install ue-log-analyzer@rider-mcp-enforcer
-/reload-plugins                              # first run auto-installs deps (no manual npm)
+/reload-plugins
 /ue-log-analyzer:logs                        # or: ask "check the editor logs"
 ```
-(Installing `rider-mcp-enforcer` also pulls this in automatically — see the
-[marketplace](../README.md#marketplace--two-plugins).)
+No build, no `npm install` — the CLI is pure Node. (Installing `rider-mcp-enforcer` also pulls this in
+automatically — see the [marketplace](../README.md#marketplace--two-plugins).) To use typed MCP tools
+instead, see [Optional: enable the MCP server](#optional-enable-the-mcp-server).
 
 ## Setup
 Settings live in `~/.ue-log-analyzer/config.json` (precedence: env > config > default). Configure via
-`/ue-log-analyzer:logs` (it can run `log_setup`) or the `log_setup` tool / env vars:
+`ue-log setup …` (e.g. `node server/cli.js setup --projectPath "<dir>"`) or env vars:
 
 | env | config key | default | meaning |
 | --- | --- | --- | --- |
@@ -104,6 +115,11 @@ locations to its `get_symbol_info` / `read_file` to jump straight to the source.
 [Using both together](../README.md#using-both-together).
 
 ## Changelog
+- **0.2.0** — **CLI-only by default** (token-first): the MCP server is now **off by default** (no
+  `.mcp.json`, no SessionStart auto-`npm install`) — eliminates the always-on MCP schema tax (~1–1.5k
+  tok/session). A new **skill** (`skills/logs/`) auto-discovers log work and drives the `ue-log` CLI via
+  Bash. The default path has **zero npm dependencies**. MCP is now an opt-in (see *Optional: enable the
+  MCP server*). Existing MCP users: add `.mcp.json` + `npm install` to keep typed tools.
 - **0.1.4** — **CLI front-end** (`ue-log <command>`): same engine as the MCP server (shared `core.js`
   `runTool`), byte-identical output, but **zero always-on context cost** and portable outside Claude Code
   (scripts/CI/other agents). MCP server slimmed to a thin adapter. See *Two ways to run*.
