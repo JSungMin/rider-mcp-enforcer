@@ -36,11 +36,14 @@ scalar columns that decide the answer.
   everything up by `file:line` (best for "what's flooding my log").
 - **`log_fields`:** generic columnar extractor for dense per-frame trace logs — pulls only the chosen
   scalars (`Key`, `Key.x|.y|.z`, `Key.Y|.P|.R`, `ts`, `dts`, `d:Key`, `step:Key`).
+- **`log_diff`:** compare two logs (before/after) and emit **only the delta** — new errors, errors that
+  disappeared, and groups whose count changed. Unchanged groups are omitted, so a regression-triage diff
+  across runs costs a fraction of re-reading either log.
 
 ## Commands & tools
 - `/ue-log-analyzer:logs` — guided: detect → summary → errors with locations.
-- MCP tools (server `ue-log`): `log_detect`, `log_summary`, `log_search`, `log_fields`, `log_tail`,
-  `log_setup`, `log_config`.
+- MCP tools (server `ue-log`): `log_detect`, `log_summary`, `log_search`, `log_fields`, `log_diff`,
+  `log_tail`, `log_learnings`, `log_learnings_reset`, `log_setup`, `log_config`.
 
 ## Prerequisites
 - **Node.js ≥ 18** on PATH. (No Rider/Unity install needed — it only reads the log file.)
@@ -73,6 +76,11 @@ locations to its `get_symbol_info` / `read_file` to jump straight to the source.
 [Using both together](../README.md#using-both-together).
 
 ## Changelog
+- **0.1.3** — `log_diff`: compare two logs and emit only the delta (new / gone / count-changed groups),
+  unchanged groups omitted — token-cheap regression triage across runs. Eval extended with diff metrics.
+- **0.1.2** — local **learnings ledger** (`log_learnings` / `log_learnings_reset`): tracks parse coverage,
+  top categories, and templated shapes of unparsed lines (candidates for new parsers) — sanitized,
+  never transmitted. Self-contained eval harness (`eval/run.mjs`) + CI.
 - **0.1.1** — auto-installs its server deps on session start (`${CLAUDE_PLUGIN_DATA}` + dynamic SDK
   resolution) — no manual `npm install`.
 - **0.1.0** — initial: `log_detect`/`log_search`/`log_summary`/`log_fields`/`log_tail` +

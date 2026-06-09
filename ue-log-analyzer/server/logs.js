@@ -318,6 +318,119 @@ export function analyzeLog(text, opts = {}) {
   return `${header}\n\n${body || "(no matching entries)"}${footer}`;
 }
 
+// ---- diff (compare two logs; emit ONLY the delta) ----
+// Tally each side into templated groups, then report new / gone / count-changed
+// groups only. Unchanged groups are omitted entirely — that omission IS the token
+// win: a noisy log that barely changed yields a near-empty diff instead of a full dump.
+function tally(text, { minRank, catLc, fileLc, q, groupBy, maxLocs }) {
+  const sevCounts = { Fatal: 0, Error: 0, Warning: 0, Display: 0, Verbose: 0 };
+  const groups = new Map();
+  let total = 0;
+  for (const raw of text.split(/\r?\n/)) {
+    const e = parseLine(raw);
+    if (!e) continue;
+    if (rank(e.severity) < minRank) continue;
+    if (catLc && e.category.toLowerCase() !== catLc) continue;
+    if (fileLc && !e.location.toLowerCase().includes(fileLc)) continue;
+    if (q && !e.message.toLowerCase().includes(q) && !e.category.toLowerCase().includes(q)) continue;
+    total++;
+    sevCounts[e.severity] = (sevCounts[e.severity] || 0) + 1;
+    const key =
+      groupBy === "callsite" && e.location
+        ? `${e.severity}|${e.category}|@${e.location}`
+        : `${e.severity}|${e.category}|${templateOf(e.message)}`;
+    let g = groups.get(key);
+    if (!g) {
+      g = { severity: e.severity, category: e.category, message: e.message, count: 0, locs: new Set() };
+      groups.set(key, g);
+    }
+    g.count++;
+    if (e.location && g.locs.size < maxLocs) g.locs.add(e.location);
+  }
+  return { total, sevCounts, groups };
+}
+
+export function diffLogs(textA, textB, opts = {}) {
+  const {
+    severityMin = "Warning",
+    category = "",
+    file = "",
+    query = "",
+    maxGroups = 40,
+    maxLineChars = 200,
+    minDelta = 1, // only report count-changes with |Δ| ≥ minDelta
+    groupBy = "template",
+    maxLocs = 5,
+  } = opts;
+  const o = {
+    minRank: rank(severityMin),
+    catLc: String(category).toLowerCase(),
+    fileLc: String(file).toLowerCase(),
+    q: String(query).toLowerCase(),
+    groupBy: groupBy === "callsite" ? "callsite" : "template",
+    maxLocs,
+  };
+  const A = tally(textA, o);
+  const B = tally(textB, o);
+
+  const added = []; // in B, not A
+  const gone = []; // in A, not B
+  const changed = []; // in both, |Δ| ≥ minDelta
+  for (const [key, g] of B.groups) {
+    if (!A.groups.has(key)) added.push({ ...g, delta: g.count });
+    else {
+      const a = A.groups.get(key);
+      const delta = g.count - a.count;
+      if (Math.abs(delta) >= minDelta) changed.push({ ...g, from: a.count, to: g.count, delta });
+    }
+  }
+  for (const [key, g] of A.groups) if (!B.groups.has(key)) gone.push({ ...g, delta: -g.count });
+
+  const bySev = (x, y) => rank(y.severity) - rank(x.severity) || Math.abs(y.delta) - Math.abs(x.delta);
+  added.sort(bySev);
+  gone.sort(bySev);
+  changed.sort(bySev);
+
+  const clip = (m) => (m.length > maxLineChars ? m.slice(0, maxLineChars) + " …" : m);
+  const locOf = (g) => (g.locs && g.locs.size ? "  @ " + [...g.locs].join(", ") : "");
+  const sevDelta = ["Fatal", "Error", "Warning", "Display"]
+    .map((s) => {
+      const a = A.sevCounts[s] || 0,
+        b = B.sevCounts[s] || 0;
+      const d = b - a;
+      return `${s} ${a}→${b}${d ? ` (${d > 0 ? "+" : ""}${d})` : ""}`;
+    })
+    .join(", ");
+
+  const filt =
+    `severity≥${severityMin}` +
+    `${category ? `, category=${category}` : ""}${file ? `, file~${file}` : ""}` +
+    `${query ? `, query="${query}"` : ""}${o.groupBy === "callsite" ? ", groupBy=callsite" : ""}`;
+  const header =
+    `Log diff (A→B) — A: ${A.total} matched, B: ${B.total} matched (filter: ${filt}).\n` +
+    `Severity delta: ${sevDelta}.`;
+
+  if (!added.length && !gone.length && !changed.length)
+    return `${header}\n\nNo differences at this filter — the two logs match (raise severityMin/minDelta or widen the filter to compare more).`;
+
+  const section = (title, arr, fmt) => {
+    if (!arr.length) return "";
+    const shown = arr.slice(0, maxGroups);
+    const more = arr.length - shown.length;
+    return (
+      `\n${title} (${arr.length}):\n` +
+      shown.map(fmt).join("\n") +
+      (more > 0 ? `\n  … ${more} more (raise maxGroups).` : "")
+    );
+  };
+  const body =
+    section("+ NEW", added, (g) => `+ ${g.severity.toUpperCase()} [${g.category}] ${clip(g.message)}  (×${g.count})${locOf(g)}`) +
+    section("- GONE", gone, (g) => `- ${g.severity.toUpperCase()} [${g.category}] ${clip(g.message)}  (was ×${g.count})${locOf(g)}`) +
+    section("~ CHANGED", changed, (g) => `~ ${g.delta > 0 ? "+" : ""}${g.delta}  ${g.severity.toUpperCase()} [${g.category}] ${clip(g.message)}  (${g.from}→${g.to})${locOf(g)}`);
+
+  return `${header}\n${body}`;
+}
+
 // ---- learnings (sanitized; for a LOCAL ledger only) ----
 // Returns coverage + top category volumes + templated shapes of UNPARSED lines, so the tool can
 // suggest new parsers/categories or noisy excludes. Variable parts are templated; the result is
