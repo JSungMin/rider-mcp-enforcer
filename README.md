@@ -41,7 +41,7 @@ $ grep -rn "AMyActor" Source/**/*.cpp
 - [Marketplace — two plugins](#marketplace--two-plugins) · [Combined savings](#combined-token-savings-measured) · [Using both together](#using-both-together)
 - [What it does](#what-it-does) · [Performance](#performance-measured) · [Editor log analysis](#editor-log-analysis)
 - [Prerequisites](#prerequisites) · [Install](#install) · [Setup](#setup--configuration-command) · [Updating](#updating-to-a-new-version)
-- [Configuration](#configuration-env) · [Troubleshooting](#troubleshooting) · [Contributing](#contributing) · [Changelog](#changelog)
+- [Configuration](#configuration-env) · [Troubleshooting](#troubleshooting) · [Contributing](#contributing) · [Releases](https://github.com/JSungMin/rider-mcp-enforcer/releases)
 
 ---
 
@@ -237,8 +237,9 @@ Check what's installed with `/plugin` (it lists each plugin's version). If a com
 `/rider-mcp-enforcer:setup` is missing, your installed copy predates it — update as above.
 
 > Maintainer note: the `version` field in `.claude-plugin/plugin.json` gates updates — bump it when
-> you want clients to pick up changes. Config keys/commands/tools and the **Changelog** below must be
-> updated in the same commit as any source change.
+> you want clients to pick up changes. Config keys/commands/tools must be updated in the same commit as
+> any source change; version history lives in [Releases](https://github.com/JSungMin/rider-mcp-enforcer/releases)
+> (auto-generated on each `v*` tag), not in this README.
 
 ## Configuration (env)
 
@@ -315,29 +316,11 @@ Rider — MCP is off or the URL is wrong.
 - Transport is SSE. If your Rider build only offers stdio, open an issue — a stdio client mode can be
   added.
 
-## Changelog
+## Version history
 
-- **0.1.10** — self-learning tool map: what gets summarized is now decided by **response shape**
-  (Rider's list JSON), not a hardcoded tool-name list. Auto-adapts to Rider version/tool renames,
-  never trims non-list tools like `read_file`, and auto-escalation only fires on tools whose schema
-  has a `limit`. `RIDER_SUMMARIZE_TOOLS` becomes an optional restrict filter.
-- **0.1.9** — one-step install: declares `ue-log-analyzer` as a dependency (one `/plugin install` gets
-  both), and the proxy's `npm install` runs automatically on session start (`${CLAUDE_PLUGIN_DATA}` +
-  dynamic SDK resolution) — no manual `npm install`.
-- **0.1.8** — hook fix: only block when a search tool is the **actual command** of a segment (no more
-  false positives on `node setup.mjs`, `cd`, or paths/args containing `plugins`/`source`/`rg`);
-  Korean README ([README.ko.md](README.ko.md)).
-- **0.1.7** — in-Claude setup + savings as typed slash commands (`commands/`); config file
-  `~/.rider-mcp-enforcer/config.json` (env > config > default); `rider_setup`/`rider_config`/
-  `rider_detect` tools; `setup.mjs`.
-- **0.1.6** — default build-artifact exclude filter; cumulative token-savings ledger + `rider_savings`
-  tool / `/savings` / `stats.mjs`.
-- **0.1.5** — never-silent truncation: auto-escalate once, then loud `INCOMPLETE` banner; per-line cap.
-- **0.1.4** — measured token/time benchmark + accuracy analysis (BENCHMARK.md).
-- **0.1.3** — documented that Rider MCP only searches projects open in the IDE.
-- **0.1.2** — aligned to the real Rider MCP tool schema (live-verified).
-- **0.1.1** — handle disabled/unreachable Rider MCP (`RIDER_ENFORCE=0` escape).
-- **0.1.0** — initial: JetBrains-MCP reuse + grep-blocking hook + routing skill + summarizing proxy.
+See the **[Releases](https://github.com/JSungMin/rider-mcp-enforcer/releases)** page — every version
+tag publishes categorized, PR-linked notes (🚀 Features / 🐛 Bug Fixes / 📝 Documentation / 🔧
+Maintenance), generated automatically. The badge at the top always points at the latest.
 
 ## Contributing
 

@@ -119,27 +119,9 @@ Log entries carry `file:line`. If [rider-mcp-enforcer](../README.md) is also ins
 locations to its `get_symbol_info` / `read_file` to jump straight to the source. See
 [Using both together](../README.md#using-both-together).
 
-## Changelog
-- **0.2.1** — `log_locate` (CLI `locate`): jump list of distinct `file:line` for matched entries (no
-  message bodies), ranked by severity then count; `--basename` strips paths for Rider's filename
-  search. The compact handoff for opening offending source via rider-mcp-enforcer.
-- **0.2.0** — **CLI-only by default** (token-first): the MCP server is now **off by default** (no
-  `.mcp.json`, no SessionStart auto-`npm install`) — eliminates the always-on MCP schema tax (~1–1.5k
-  tok/session). A new **skill** (`skills/logs/`) auto-discovers log work and drives the `ue-log` CLI via
-  Bash. The default path has **zero npm dependencies**. MCP is now an opt-in (see *Optional: enable the
-  MCP server*). Existing MCP users: add `.mcp.json` + `npm install` to keep typed tools.
-- **0.1.4** — **CLI front-end** (`ue-log <command>`): same engine as the MCP server (shared `core.js`
-  `runTool`), byte-identical output, but **zero always-on context cost** and portable outside Claude Code
-  (scripts/CI/other agents). MCP server slimmed to a thin adapter. See *Two ways to run*.
-- **0.1.3** — `log_diff`: compare two logs and emit only the delta (new / gone / count-changed groups),
-  unchanged groups omitted — token-cheap regression triage across runs. Eval extended with diff metrics.
-- **0.1.2** — local **learnings ledger** (`log_learnings` / `log_learnings_reset`): tracks parse coverage,
-  top categories, and templated shapes of unparsed lines (candidates for new parsers) — sanitized,
-  never transmitted. Self-contained eval harness (`eval/run.mjs`) + CI.
-- **0.1.1** — auto-installs its server deps on session start (`${CLAUDE_PLUGIN_DATA}` + dynamic SDK
-  resolution) — no manual `npm install`.
-- **0.1.0** — initial: `log_detect`/`log_search`/`log_summary`/`log_fields`/`log_tail` +
-  `/ue-log-analyzer:logs`. UE/Unity/generic parsing, template dedup, callsite rollup, field extraction.
+## Version history
+See the **[Releases](https://github.com/JSungMin/rider-mcp-enforcer/releases)** page — every `v*` tag
+publishes categorized, PR-linked notes automatically. The release badge above always points at the latest.
 
 ## License
 MIT © 2026 JSungMin

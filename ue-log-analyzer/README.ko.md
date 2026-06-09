@@ -111,24 +111,9 @@ cd server && npm install && cd ..
 해당 플러그인의 `get_symbol_info`/`read_file`에 넘겨 소스로 바로 점프. [두 플러그인 함께
 쓰기](../README.ko.md#두-플러그인-함께-쓰기) 참고.
 
-## Changelog
-- **0.2.1** — `log_locate`(CLI `locate`): 매칭 엔트리의 distinct `file:line` 점프 리스트(메시지 본문
-  없음), severity→빈도 정렬; `--basename`은 Rider 파일명 검색용으로 경로 제거. rider-mcp-enforcer로
-  문제 소스를 여는 가장 압축된 핸드오프.
-- **0.2.0** — **기본 CLI 전용**(토큰 우선): MCP 서버 **기본 비활성**(`.mcp.json`·SessionStart 자동
-  `npm install` 제거) → 상시 MCP 스키마 세금(~1–1.5k tok/세션) 제거. 새 **skill**(`skills/logs/`)이
-  로그 작업을 자동 발견해 `ue-log` CLI를 Bash로 구동. 기본 경로 **npm 의존성 0**. MCP는 opt-in(*선택:
-  MCP 서버 켜기* 참고). 기존 MCP 사용자: `.mcp.json` + `npm install`로 타입드 도구 유지.
-- **0.1.4** — **CLI 프론트엔드**(`ue-log <command>`): MCP 서버와 같은 엔진(공유 `core.js` `runTool`),
-  byte 동일 출력, 단 **상시 컨텍스트 비용 0** + Claude Code 밖(스크립트/CI/타 에이전트) 이식 가능.
-- **0.1.3** — `log_diff`: 두 로그 비교 후 델타만 출력(신규/사라짐/카운트변경 그룹, 변경없는 그룹 생략)
-  — 실행 간 회귀 분류를 토큰 저렴하게.
-- **0.1.2** — 로컬 **learnings 원장**(`log_learnings`/`log_learnings_reset`): 파싱 커버리지·상위
-  카테고리·미파싱 라인 템플릿 추적(새 파서 후보). Sanitized, 전송 안 함. 자체 eval + CI.
-- **0.1.1** — 서버 의존성을 세션 시작 시 자동 설치(`${CLAUDE_PLUGIN_DATA}` + 동적 SDK 해석) — 수동
-  `npm install` 불필요.
-- **0.1.0** — 최초: `log_detect`/`log_search`/`log_summary`/`log_fields`/`log_tail` +
-  `/ue-log-analyzer:logs`. UE/Unity/범용 파싱, 템플릿 dedup, 콜사이트 롤업, 필드 추출.
+## 버전 히스토리
+**[Releases](https://github.com/JSungMin/rider-mcp-enforcer/releases)** 페이지 참고 — 각 `v*` 태그마다
+카테고리·PR 링크 노트가 자동 생성됩니다. 상단 릴리스 배지는 항상 최신을 가리킵니다.
 
 ## 라이선스
 MIT © 2026 JSungMin
