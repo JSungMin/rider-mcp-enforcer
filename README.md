@@ -14,11 +14,24 @@
 > Unity / .NET** projects: search the codebase through **Rider's index** instead of `grep`, and
 > analyze **tens-of-MB editor logs** — both at **~99% fewer tokens**.
 
-<!-- DEMO: drop docs/demo.gif (terminal recording of a grep-block redirect + a 50MB log → 2.5K summary),
-     then replace the line below with:
-<p align="center"><img src="docs/demo.gif" alt="rider-mcp-enforcer + ue-log-analyzer demo" width="760"></p>
--->
-<p align="center"><em>📽️ Demo GIF coming soon — for now, the numbers below tell the story.</em></p>
+### What it looks like
+```text
+# Claude tries to grep code → the hook blocks it and redirects:
+$ grep -rn "AMyActor" Source/**/*.cpp
+⛔ [rider-mcp-enforcer] Blocked a code-symbol search. Use search_symbol / search_text instead.
+
+▶ search_symbol "AMyActor"
+  Source/Game/MyActor.h:42   class MYGAME_API AMyActor : public APawn   (+3 more)
+  → ~120 tokens   (grep would have dumped ~14,000)
+
+# A 52 MB editor log → parsed, deduped, classified:
+▶ /ue-log-analyzer:logs
+  41,233 lines · 7 errors · 312 warnings
+  ERROR   [LogStreaming] Failed to load asset <addr>         (×128)   @ AssetManager.cpp:210
+  WARNING [LogPhysics]   Penetration depth <n> exceeds limit (×4,051) @ MyComponent.cpp:88
+  → ~900 tokens   (raw log ≈ 1,300,000)
+```
+<sub>Illustrative output with placeholder symbols.</sub>
 
 ### Is this you?
 - 🔍 **`grep` floods your context** on a giant Unreal C++ repo → search via Rider's index, token-capped (**~99% fewer tokens** — see [benchmarks](#combined-token-savings-measured)).
