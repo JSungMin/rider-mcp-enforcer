@@ -22,6 +22,12 @@ actually use them instead of grep:
 
 > Honest scope: Rider's MCP alone already gives you symbol/file search. This plugin's value is
 > **enforcement + token control + projectPath ergonomics** on top of it.
+
+### Commands & tools
+- `/rider-mcp-enforcer:setup` — configure the plugin (see [Setup](#setup--configuration-command)).
+- `/rider-mcp-enforcer:savings` — show cumulative token savings.
+- MCP tools (server `rider-search`): `rider_setup`, `rider_config`, `rider_detect`, `rider_savings`,
+  `rider_savings_reset`, plus the summarized Rider search tools (`search_symbol`, `search_text`, …).
 >
 > **Two real limitations of this Rider MCP build (verified live):**
 > 1. **No semantic find-usages/find-references tool.** Reference-finding falls back to `search_text`/
@@ -208,6 +214,21 @@ Rider — MCP is off or the URL is wrong.
 - The summarizer is heuristic (keeps `path:line`-looking lines). Tune `RIDER_MAX_RESULTS` per repo.
 - Transport is SSE. If your Rider build only offers stdio, open an issue — a stdio client mode can be
   added.
+
+## Changelog
+
+- **0.1.8** — moved `setup`/`savings` to typed slash commands (`commands/`) so they show up reliably;
+  routing skill stays in `skills/`.
+- **0.1.7** — in-Claude setup command + `~/.rider-mcp-enforcer/config.json` (env > config > default);
+  `rider_setup`/`rider_config`/`rider_detect` tools; `setup.mjs`.
+- **0.1.6** — default build-artifact exclude filter; cumulative token-savings ledger + `rider_savings`
+  tool / `/savings` / `stats.mjs`.
+- **0.1.5** — never-silent truncation: auto-escalate once, then loud `INCOMPLETE` banner; per-line cap.
+- **0.1.4** — measured token/time benchmark + accuracy analysis (BENCHMARK.md).
+- **0.1.3** — documented that Rider MCP only searches projects open in the IDE.
+- **0.1.2** — aligned to the real Rider MCP tool schema (live-verified).
+- **0.1.1** — handle disabled/unreachable Rider MCP (`RIDER_ENFORCE=0` escape).
+- **0.1.0** — initial: JetBrains-MCP reuse + grep-blocking hook + routing skill + summarizing proxy.
 
 ## License
 
