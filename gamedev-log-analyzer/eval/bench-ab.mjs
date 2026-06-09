@@ -16,6 +16,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CLI = path.join(HERE, "..", "server", "cli.js");
 const LOG = process.env.LOG;
 const LOG_B = process.env.LOG_B || "";
+const FIELDS = process.env.FIELDS || ""; // comma-separated scalar keys → enables the `fields` row
 if (!LOG || !fs.existsSync(LOG)) {
   console.error("Set LOG=/path/to/a/log/file (and optionally LOG_B=/path/to/second.log for the diff row).");
   process.exit(1);
@@ -37,6 +38,15 @@ const rows = [
   ["search Error+ (dedup groups, callsite)", cliTok(["search", "--path", LOG, "--severityMin", "Error", "--groupBy", "callsite", "--maxGroups", "50"]), rawTok],
   ["locate Error+ (file:line jump list)", cliTok(["locate", "--path", LOG, "--severityMin", "Error", "--max", "50"]), rawTok],
 ];
+// `fields` scalarizes a trace log into requested columns. Its fair baseline is NOT the whole log but
+// the raw lines you'd grep to read those scalars — so compare against just the matching lines.
+if (FIELDS) {
+  const keys = FIELDS.split(",").map((s) => s.trim()).filter(Boolean);
+  const re = new RegExp(`(?:${keys.map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})=[-0-9]`);
+  let matchedBytes = 0;
+  for (const line of fs.readFileSync(LOG, "utf8").split("\n")) if (re.test(line)) matchedBytes += Buffer.byteLength(line + "\n", "utf8");
+  rows.push([`fields ${FIELDS} (columnar, vs grep of matching lines)`, cliTok(["fields", "--path", LOG, "--fields", FIELDS, "--max", "100"]), tok(matchedBytes)]);
+}
 if (LOG_B && fs.existsSync(LOG_B)) {
   const concat = fileTok(LOG) + fileTok(LOG_B); // pasting both raw logs to compare runs
   rows.push(["diff Warning+ (delta of two runs)", cliTok(["diff", "--pathA", LOG, "--pathB", LOG_B, "--severityMin", "Warning"]), concat]);
