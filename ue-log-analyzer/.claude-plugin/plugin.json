@@ -1,7 +1,7 @@
 {
   "name": "ue-log-analyzer",
   "description": "Token-efficient editor-log analysis for Claude Code. Parses, deduplicates, and classifies huge Unreal/Unity (or generic) logs — search by severity/category, roll up by callsite, and extract decisive scalar fields. No IDE required.",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "author": { "name": "JSungMin" },
   "homepage": "https://github.com/JSungMin/rider-mcp-enforcer",
   "repository": "https://github.com/JSungMin/rider-mcp-enforcer",

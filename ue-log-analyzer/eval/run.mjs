@@ -3,7 +3,7 @@
 // data) and measures the core promises: parse coverage, token reduction, dedup collapse, and
 // field-extraction size. Exits non-zero if any metric falls below threshold — a regression guard
 // and a measurable target for future self-improvement. No dependencies (pure logs.js); CI-friendly.
-import { analyzeLog, extractFields, parseLine } from "../server/logs.js";
+import { analyzeLog, extractFields, parseLine, diffLogs } from "../server/logs.js";
 
 // Deterministic synthetic UE-style log (generic names only).
 function makeLog(n) {
@@ -43,11 +43,25 @@ const reduction = 1 - sumTok / rawTok;
 const groups = (summary.match(/@ [\w./]+:\d+/g) || []).length;
 const fieldsTok = tok(extractFields(log, { query: "Tick", fields: ["Pawn", "Alpha", "ts"], max: 20 }));
 
+// diff: B = same run plus a handful of injected NEW errors. A near-identical pair must
+// yield a near-empty diff — the delta-only token win vs re-summarizing the whole log.
+const logB = makeLog(N)
+  .split("\n")
+  .map((l, i) => (i % 800 === 0 ? `[2024.01.01-00.00.00:000][   0]LogGpu: Error: Gpu.cpp(9) device removed during present` : l))
+  .join("\n");
+const diff = diffLogs(log, logB, { severityMin: "Warning" });
+const diffTok = tok(diff);
+const diffHasNew = /\+ NEW/.test(diff);
+const diffVsRaw = 1 - diffTok / rawTok; // honest win: delta vs re-reading the whole log
+
 const rows = [
   ["parse coverage", (coverage * 100).toFixed(1) + "%", "≥ 95%", coverage >= 0.95],
   ["token reduction (callsite)", (reduction * 100).toFixed(1) + "%", "≥ 90%", reduction >= 0.9],
   ["callsite groups", groups, "≤ 20", groups <= 20],
   ["log_fields tokens (20 rows)", fieldsTok, "≤ 400", fieldsTok <= 400],
+  ["log_diff tokens (delta-only)", diffTok, "≤ 200", diffTok <= 200],
+  ["log_diff surfaces NEW errors", diffHasNew, "true", diffHasNew],
+  ["log_diff vs raw log", (diffVsRaw * 100).toFixed(1) + "%", "≥ 99%", diffVsRaw >= 0.99],
 ];
 
 console.log(`ue-log-analyzer eval — ${N} synthetic (sanitized) lines\n`);

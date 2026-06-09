@@ -11,7 +11,7 @@ import { Server, StdioServerTransport, ListToolsRequestSchema, CallToolRequestSc
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { detectLogs, readText, analyzeLog, extractFields, collectLearnings } from "./logs.js";
+import { detectLogs, readText, analyzeLog, extractFields, collectLearnings, diffLogs } from "./logs.js";
 
 const CONFIG_DIR = path.join(os.homedir(), ".ue-log-analyzer");
 const CONFIG_FILE = process.env.UELOG_CONFIG_FILE || path.join(CONFIG_DIR, "config.json");
@@ -172,6 +172,29 @@ const TOOLS = [
     inputSchema: { type: "object", properties: { path: { type: "string" }, projectPath: { type: "string" } } },
   },
   {
+    name: "log_diff",
+    description:
+      "Compare two logs (A=base/before, B=new/after) and emit ONLY the delta: new errors, errors that " +
+      "disappeared, and groups whose count changed. Unchanged groups are omitted — token-cheap regression " +
+      "triage across runs. Without pathA/pathB it auto-picks the two newest detected logs (A=older, B=newest). " +
+      "Filters: query, severityMin, category, file, groupBy, minDelta.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        pathA: { type: "string", description: "Base/before log (older)" },
+        pathB: { type: "string", description: "New/after log (newer)" },
+        projectPath: { type: "string", description: "If pathA/pathB omitted, detect logs here (A=2nd newest, B=newest)" },
+        query: { type: "string" },
+        severityMin: { type: "string", description: "Fatal|Error|Warning|Display (default Warning)" },
+        category: { type: "string" },
+        file: { type: "string" },
+        groupBy: { type: "string", description: "'template' (default) or 'callsite'" },
+        minDelta: { type: "number", description: "Only report count-changes with |Δ| ≥ this (default 1)" },
+        maxGroups: { type: "number" },
+      },
+    },
+  },
+  {
     name: "log_tail",
     description: "Last N raw lines of a log (escape hatch).",
     inputSchema: {
@@ -227,6 +250,40 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           : `No editor logs found. Pass a path, set logPath, or projectPath (looked under <project>/Saved/Logs and Unity Editor.log).`
       );
     }
+    if (name === "log_diff") {
+      let pa = a.pathA,
+        pb = a.pathB;
+      if (!pa || !pb) {
+        const found = detectLogs(a.projectPath || PROJECT_PATH);
+        if (found.length < 2)
+          return ok(
+            `Need two logs to diff. Pass pathA + pathB, or point projectPath at a dir with ≥2 logs ` +
+              `(found ${found.length}).`,
+            true
+          );
+        pb = pb || found[0]; // newest = after
+        pa = pa || found[1]; // 2nd newest = before
+      }
+      if (!fs.existsSync(pa)) return ok(`Base log (A) not found: ${pa}`, true);
+      if (!fs.existsSync(pb)) return ok(`New log (B) not found: ${pb}`, true);
+      const ta = readText(pa, LOG_MAX_BYTES);
+      const tb = readText(pb, LOG_MAX_BYTES);
+      try { recordLearnings(ta); recordLearnings(tb); } catch { /* best-effort */ }
+      return ok(
+        `A (base): ${pa}\nB (new):  ${pb}\n\n` +
+          diffLogs(ta, tb, {
+            query: a.query || "",
+            severityMin: a.severityMin || "Warning",
+            category: a.category || "",
+            file: a.file || "",
+            groupBy: a.groupBy === "callsite" ? "callsite" : "template",
+            minDelta: Number(a.minDelta) > 0 ? Number(a.minDelta) : 1,
+            maxGroups: Number(a.maxGroups) || MAX_GROUPS,
+            maxLineChars: MAX_LINE_CHARS,
+          })
+      );
+    }
+
     const lp = resolveLogPath(a);
     if (!lp) return ok("No log path. Pass path/projectPath or run log_detect.", true);
     if (!fs.existsSync(lp)) return ok(`Log not found: ${lp}`, true);
