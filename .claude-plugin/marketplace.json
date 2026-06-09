@@ -1,5 +1,6 @@
 {
   "name": "rider-mcp-enforcer",
+  "description": "Token-efficient tooling for large Unreal C++/Unity/.NET projects: search the codebase through JetBrains Rider's index instead of grep, and analyze huge editor logs — both at ~99% fewer tokens.",
   "owner": {
     "name": "JSungMin",
     "url": "https://github.com/JSungMin"
