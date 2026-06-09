@@ -43,9 +43,11 @@ scalar columns that decide the answer.
 ```bash
 /plugin marketplace add JSungMin/rider-mcp-enforcer
 /plugin install ue-log-analyzer@rider-mcp-enforcer
-cd <plugin-dir>/server && npm install      # one time
+/reload-plugins                              # first run auto-installs deps (no manual npm)
 /ue-log-analyzer:logs                        # or: ask "check the editor logs"
 ```
+(Installing `rider-mcp-enforcer` also pulls this in automatically — see the
+[marketplace](../README.md#marketplace--two-plugins).)
 
 ## Setup
 Settings live in `~/.ue-log-analyzer/config.json` (precedence: env > config > default). Configure via
@@ -65,6 +67,8 @@ locations to its `get_symbol_info` / `read_file` to jump straight to the source.
 [Using both together](../README.md#using-both-together).
 
 ## Changelog
+- **0.1.1** — auto-installs its server deps on session start (`${CLAUDE_PLUGIN_DATA}` + dynamic SDK
+  resolution) — no manual `npm install`.
 - **0.1.0** — initial: `log_detect`/`log_search`/`log_summary`/`log_fields`/`log_tail` +
   `/ue-log-analyzer:logs`. UE/Unity/generic parsing, template dedup, callsite rollup, field extraction.
 

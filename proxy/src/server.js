@@ -17,14 +17,14 @@
  *                          list_file_symbols,search_in_files_content).
  */
 
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
+  Client,
+  SSEClientTransport,
+  Server,
+  StdioServerTransport,
   ListToolsRequestSchema,
   CallToolRequestSchema,
-} from "@modelcontextprotocol/sdk/types.js";
+} from "./sdk.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";

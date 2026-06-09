@@ -8,13 +8,13 @@
     {
       "name": "rider-mcp-enforcer",
       "source": "./",
-      "version": "0.1.8",
+      "version": "0.1.9",
       "description": "Force Claude Code to use Rider's MCP symbol/reference/file index instead of Bash grep, with token-flood summarization."
     },
     {
       "name": "ue-log-analyzer",
       "source": "./ue-log-analyzer",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "description": "Token-efficient editor-log analysis (Unreal/Unity/generic): parse, dedup, classify by severity/category, callsite rollup, and decisive-field extraction. No IDE required."
     }
   ]
