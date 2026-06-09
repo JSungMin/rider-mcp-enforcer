@@ -317,3 +317,42 @@ export function analyzeLog(text, opts = {}) {
     (matched === 0 ? `\n(no entries matched — lower severityMin or change the filter.)` : "");
   return `${header}\n\n${body || "(no matching entries)"}${footer}`;
 }
+
+// ---- learnings (sanitized; for a LOCAL ledger only) ----
+// Returns coverage + top category volumes + templated shapes of UNPARSED lines, so the tool can
+// suggest new parsers/categories or noisy excludes. Variable parts are templated; the result is
+// written only to a local file on the user's machine (never transmitted).
+export function collectLearnings(text, maxSamples = 8) {
+  const lines = text.split(/\r?\n/);
+  let total = 0,
+    parsed = 0;
+  const cats = new Map();
+  const misses = new Map();
+  for (const raw of lines) {
+    if (!raw.trim()) continue;
+    total++;
+    const e = parseLine(raw);
+    if (e) {
+      parsed++;
+      cats.set(e.category, (cats.get(e.category) || 0) + 1);
+      continue;
+    }
+    const shape = raw
+      .replace(/0x[0-9a-fA-F]+/g, "<x>")
+      .replace(/[A-Za-z]:[\/][^\s'"]+/g, "<path>")
+      .replace(/"[^"]*"/g, '"<q>"')
+      .replace(/-?\d+(?:\.\d+)?/g, "<n>")
+      .trim()
+      .slice(0, 100);
+    misses.set(shape, (misses.get(shape) || 0) + 1);
+  }
+  const top = (m, n) =>
+    [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, n).map(([k, v]) => ({ k, v }));
+  return {
+    total,
+    parsed,
+    coverage: total ? parsed / total : 1,
+    categories: top(cats, 10),
+    misses: top(misses, maxSamples),
+  };
+}
