@@ -31,6 +31,15 @@ const MAX_RESULTS = parseInt(process.env.RIDER_MAX_RESULTS || "50", 10) || 50;
 // Default project for Rider tools when multiple projects are open and the caller
 // omits projectPath (Rider errors out otherwise). Optional.
 const PROJECT_PATH = process.env.RIDER_PROJECT_PATH || "";
+// On truncation, auto-retry once with a bigger limit to learn the true count, then
+// loudly flag incompleteness so Claude asks the user instead of coding on a partial set.
+const ESCALATE = !["0", "false", "off"].includes(
+  String(process.env.RIDER_ESCALATE ?? "1").toLowerCase()
+);
+const ESCALATE_LIMIT = parseInt(process.env.RIDER_ESCALATE_LIMIT || "500", 10) || 500;
+// Cap each result's code snippet so one giant line (e.g. a generated .vcxproj IncludePath)
+// cannot blow the token budget.
+const MAX_LINE_CHARS = parseInt(process.env.RIDER_MAX_LINE_CHARS || "200", 10) || 200;
 // Real Rider MCP (2025.2+) search/symbol tools whose JSON responses we compact.
 const SUMMARIZE = new Set(
   (
@@ -69,36 +78,72 @@ function summarizeLines(part) {
 }
 
 // Rider search/symbol tools return JSON: {"items":[{filePath,startLine,lineText,...}],"more":bool}.
-// Compact each item to `path:line  lineText`, cap at MAX_RESULTS, surface truncation/`more`.
-function summarize(result) {
-  if (!result || !Array.isArray(result.content)) return result;
-  const content = result.content.map((part) => {
-    if (part.type !== "text" || typeof part.text !== "string") return part;
+// Extract {items, more} from the first JSON text part, or null if not that shape.
+function parseSearch(result) {
+  if (!result || !Array.isArray(result.content)) return null;
+  for (const part of result.content) {
+    if (part.type !== "text" || typeof part.text !== "string") continue;
     let parsed;
     try {
       parsed = JSON.parse(part.text);
     } catch {
-      return summarizeLines(part);
+      return null;
     }
     const items = Array.isArray(parsed?.items)
       ? parsed.items
       : Array.isArray(parsed)
       ? parsed
       : null;
-    if (!items) return summarizeLines(part);
-    const kept = items.slice(0, MAX_RESULTS).map((it) => {
-      const p = String(it.filePath ?? it.path ?? it.pathInProject ?? "").replace(/\\/g, "/");
-      const line = it.startLine ?? it.line ?? "";
-      const txt = String(it.lineText ?? it.text ?? "").trim();
-      return `${p}${line !== "" ? ":" + line : ""}${txt ? "  " + txt : ""}`;
-    });
-    let text = kept.join("\n");
-    const extra = items.length - kept.length;
-    if (extra > 0) text += `\n… ${extra} more truncated by rider-search-proxy (raise RIDER_MAX_RESULTS or narrow q).`;
-    if (parsed?.more) text += `\n(server reports more results available — narrow q or raise the tool's limit.)`;
-    return { type: "text", text: text || part.text };
-  });
-  return { ...result, content };
+    if (!items) return null;
+    return { items, more: parsed?.more === true };
+  }
+  return null;
+}
+
+function itemLine(it) {
+  const p = String(it.filePath ?? it.path ?? it.pathInProject ?? "").replace(/\\/g, "/");
+  const line = it.startLine ?? it.line ?? "";
+  let txt = String(it.lineText ?? it.text ?? "").trim();
+  if (txt.length > MAX_LINE_CHARS) txt = txt.slice(0, MAX_LINE_CHARS) + " …(trimmed)";
+  return `${p}${line !== "" ? ":" + line : ""}${txt ? "  " + txt : ""}`;
+}
+
+// Compact items to `path:line  lineText`, cap at MAX_RESULTS. When the result is NOT
+// exhaustive (more items fetched than shown, OR Rider still reports `more`), emit a LOUD
+// INCOMPLETE banner with explicit options so Claude escalates to the user instead of
+// treating a partial set as the full reference list.
+function summarizeSearch(info, { escalated, fetchedLimit }) {
+  const shown = Math.min(info.items.length, MAX_RESULTS);
+  const hidden = info.items.length - shown;
+  const incomplete = hidden > 0 || info.more;
+  const lines = info.items.slice(0, MAX_RESULTS).map(itemLine);
+  let text = lines.join("\n");
+  if (incomplete) {
+    const total = info.more ? `${info.items.length}+` : `${info.items.length}`;
+    const banner =
+      `\n\n⚠ INCOMPLETE RESULTS — showing ${shown} of ${total} match(es)` +
+      (escalated ? ` (proxy already auto-raised the limit to ${fetchedLimit})` : "") +
+      `.\nThis list is NOT exhaustive. Do NOT use it as the complete set for finding all` +
+      ` references, refactoring, or renaming — you may miss call sites and write wrong code.\n` +
+      `Ask the USER to choose one:\n` +
+      `  1) raise the cap (set RIDER_MAX_RESULTS higher, or pass a larger \`limit\`) to see all,\n` +
+      `  2) narrow the search (pass \`paths\` to a subdirectory), or\n` +
+      `  3) explicitly confirm a partial/representative result is acceptable for this task.`;
+    text += banner;
+  }
+  return text || "(no results)";
+}
+
+// Public entry: summarize a (possibly escalated) result for a search tool.
+function summarize(result, meta = {}) {
+  const info = parseSearch(result);
+  if (!info) {
+    // not the items-JSON shape → fall back to line trimming on text parts
+    if (!result || !Array.isArray(result.content)) return result;
+    return { ...result, content: result.content.map((p) =>
+      p.type === "text" && typeof p.text === "string" ? summarizeLines(p) : p) };
+  }
+  return { ...result, content: [{ type: "text", text: summarizeSearch(info, meta) }] };
 }
 
 const SETUP_RESULT = {
@@ -169,7 +214,30 @@ async function main() {
         ],
       };
     }
-    return SUMMARIZE.has(name) ? summarize(result) : result;
+    if (!SUMMARIZE.has(name)) return result;
+
+    // Auto-escalate once: if the first fetch looks truncated, re-fetch with a larger
+    // limit so the true count is known, then summarize with an accurate notice.
+    let meta = { escalated: false, fetchedLimit: Number(args.limit) || null };
+    const info = parseSearch(result);
+    const callerLimit = Number(args.limit) || 0;
+    const looksTruncated =
+      info && (info.more || info.items.length > MAX_RESULTS);
+    if (ESCALATE && looksTruncated && callerLimit < ESCALATE_LIMIT) {
+      try {
+        const big = await rider.callTool({
+          name,
+          arguments: { ...args, limit: ESCALATE_LIMIT },
+        });
+        if (parseSearch(big)) {
+          result = big;
+          meta = { escalated: true, fetchedLimit: ESCALATE_LIMIT };
+        }
+      } catch {
+        /* keep the first result if the escalated call fails */
+      }
+    }
+    return summarize(result, meta);
   });
 
   await server.connect(new StdioServerTransport());

@@ -56,6 +56,18 @@ It's a **precision/recall trade**, not "one is more correct":
 > Net: for navigation (definition + representative usages) the plugin is more accurate **and** far
 > cheaper; for an exhaustive occurrence audit, raise the cap or use grep on purpose.
 
+### Incomplete results (correctness guard)
+Capping is good for tokens but dangerous for "find ALL references" — a missed call site means wrong
+code. So truncation is **never silent**:
+
+1. When the first fetch looks truncated, the proxy **auto-retries once** with a larger limit
+   (`RIDER_ESCALATE_LIMIT`) to learn the true count.
+2. If the set is still not exhaustive, the response carries a loud `⚠ INCOMPLETE RESULTS — showing X
+   of Y+` banner with three options: **raise the cap**, **narrow scope (`paths`)**, or **confirm a
+   partial set is acceptable**.
+3. The skill instructs Claude: for references/refactor/rename, **stop and ask the user** with those
+   options instead of acting on the partial list.
+
 ## Prerequisites
 
 - **JetBrains Rider 2025.2+**, running, with the project open.
@@ -90,6 +102,9 @@ appear, and that a `grep src/**/*.cpp` is blocked with a redirect message.
 | `RIDER_MAX_RESULTS` | `50` | Max `file:line` lines kept per summarized response. |
 | `RIDER_SUMMARIZE_TOOLS` | `find_references,find_symbol,find_usages,list_file_symbols,search_in_files_content` | Which Rider tool responses to summarize. |
 | `RIDER_PROJECT_PATH` | — | Default project path the proxy injects when a tool call omits `projectPath`. Set this when multiple projects are open in Rider (otherwise Rider errors "Unable to determine the target project"). Get it from the "Currently open projects" list in that error, or the project root. |
+| `RIDER_ESCALATE` | `1` | `0`/`false`/`off` disables auto-escalation (see below). |
+| `RIDER_ESCALATE_LIMIT` | `500` | When a result looks truncated, the proxy re-fetches once with this larger limit to learn the true count. |
+| `RIDER_MAX_LINE_CHARS` | `200` | Max chars of each match's code snippet (prevents one giant generated line from blowing the budget). |
 | `RIDER_ENFORCE` | `1` | Set to `0`/`false`/`off` to **disable the grep-blocking hook** — use this if Rider MCP is off/unavailable and you don't want code searches blocked. |
 
 ## How enforcement works

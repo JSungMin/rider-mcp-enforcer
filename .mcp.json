@@ -6,7 +6,9 @@
       "env": {
         "RIDER_MCP_SSE_URL": "${RIDER_MCP_SSE_URL}",
         "RIDER_PROJECT_PATH": "${RIDER_PROJECT_PATH}",
-        "RIDER_MAX_RESULTS": "50"
+        "RIDER_MAX_RESULTS": "50",
+        "RIDER_ESCALATE_LIMIT": "500",
+        "RIDER_MAX_LINE_CHARS": "200"
       }
     }
   }

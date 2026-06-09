@@ -26,6 +26,18 @@ This Rider MCP build has **no semantic find-references/find-usages tool**. To fi
 `search_text`/`search_regex` on the symbol name (string match, like grep but indexed + token-capped).
 Don't claim semantic usage results you didn't get.
 
+## Incomplete results — STOP and ask the user
+If a tool result contains a `⚠ INCOMPLETE RESULTS` banner, the proxy already auto-raised the limit
+once and the match set is STILL not exhaustive. You are seeing a partial list.
+
+- For finding **all references**, **refactoring**, **renaming**, or any edit that must touch every call
+  site: do NOT act on the partial set — you will miss occurrences and write wrong code. Present the
+  three options from the banner to the user and let them choose (raise `RIDER_MAX_RESULTS`/limit,
+  narrow with `paths`, or confirm partial is OK).
+- For casual "show me roughly where X is" lookups: a representative partial set is usually fine; say so.
+
+Never silently treat a banner-flagged result as complete.
+
 ## Why
 - `search_symbol` uses Rider's index (no full-tree scan, token-capped by the proxy).
 - grep over a large UE codebase floods context with thousands of lines; the proxy caps responses.
