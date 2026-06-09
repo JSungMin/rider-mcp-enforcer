@@ -13,6 +13,13 @@
 > Unity / .NET** projects: search the codebase through **Rider's index** instead of `grep`, and
 > analyze **tens-of-MB editor logs** — both at **~99% fewer tokens**.
 
+### Demo
+
+`gamedev-log-analyzer` turning a 6,000-line synthetic engine log into a few hundred tokens
+(`summary` / `search` / `locate` / `diff`):
+
+![gamedev-log-analyzer demo](demo/demo.svg)
+
 ### What it looks like
 ```text
 # Claude tries to grep code → the hook blocks it and redirects:
