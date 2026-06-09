@@ -1,5 +1,11 @@
 name: test
-on: [push, pull_request]
+# Run on PRs and on pushes to main only. This avoids the double run you get when a feature-branch
+# push and its PR both fire, and skips redundant runs on tag pushes (release.yml / npm-publish.yml
+# handle tags; main already passed CI before tagging).
+on:
+  push:
+    branches: [main]
+  pull_request:
 
 jobs:
   test:
