@@ -25,8 +25,16 @@ try {
   if (bundled === stored && haveModules) process.exit(0); // up to date
   fs.mkdirSync(DATA, { recursive: true });
   fs.writeFileSync(dst, bundled);
-  execSync("npm install --no-audit --no-fund", { cwd: DATA, stdio: "ignore" });
-} catch {
+  // Use the npm shipped next to this node binary: a SessionStart hook may run with a thin PATH
+  // that hides `npm` (resolves to npm.cmd via PATH only on Windows), which silently broke installs.
+  const isWin = process.platform === "win32";
+  const local = path.join(path.dirname(process.execPath), isWin ? "npm.cmd" : "npm");
+  const npm = fs.existsSync(local) ? `"${local}"` : "npm";
+  execSync(`${npm} install --no-audit --no-fund --loglevel=error`, { cwd: DATA, stdio: "ignore" });
+} catch (e) {
+  // Surface the reason on stderr (visible in hook logs) instead of failing completely silently;
+  // the MCP server self-heals at spawn, but a logged cause speeds diagnosis when even that can't.
+  console.error("[ensure-deps] install failed:", e?.message || e);
   try {
     fs.rmSync(dst); // failed → drop the marker so next session retries
   } catch {
