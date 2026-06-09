@@ -3,7 +3,7 @@
 [English](README.md) · **한국어** · [rider-mcp-enforcer 마켓플레이스](../README.ko.md#마켓플레이스--2개-플러그인)의 일부
 
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-7C3AED)](https://code.claude.com/docs/en/plugins)
-[![MCP](https://img.shields.io/badge/MCP-server-1f6feb)](https://modelcontextprotocol.io)
+[![CLI](https://img.shields.io/badge/CLI-zero%20deps-1f6feb)](#claude가-사용하는-법-기본-cli)
 [![release](https://img.shields.io/github/v/release/JSungMin/rider-mcp-enforcer)](https://github.com/JSungMin/rider-mcp-enforcer/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](../LICENSE)
 [![Stars](https://img.shields.io/github/stars/JSungMin/rider-mcp-enforcer?style=social)](https://github.com/JSungMin/rider-mcp-enforcer/stargazers)
@@ -35,27 +35,63 @@ Unity `Editor.log`는 보통 수십 MB의 반복 스팸이라 `cat`/`grep`하면
 - **`log_fields`:** dense 프레임 로그용 범용 컬럼 추출 — 선택 스칼라만 (`Key`, `Key.x|.y|.z`,
   `Key.Y|.P|.R`, `ts`, `dts`, `d:Key`, `step:Key`).
 
-## 명령어 & 도구
-- `/ue-log-analyzer:logs` — 가이드: 탐지 → 요약 → 에러+위치.
-- MCP 도구(서버 `ue-log`): `log_detect`, `log_summary`, `log_search`, `log_fields`, `log_tail`,
-  `log_setup`, `log_config`.
+## Claude가 사용하는 법 (기본 CLI)
+Claude는 **skill**을 통해 `ue-log` CLI를 셸 호출합니다 — **상시 컨텍스트 비용이 없습니다**(로그가
+실제로 관련될 때까지 프롬프트에 아무것도 안 올라감). "에디터 로그 확인해줘" / "뭐가 로그를 도배해?" /
+"지난 실행 대비 뭐가 바뀌었어?"라고 묻거나 `/ue-log-analyzer:logs` 명령을 쓰면 됩니다. 내부 실행:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/server/cli.js" <command> [--flags]
+```
+
+**명령어**(`ue-log <command>`): `detect`, `summary`, `search`, `fields`, `diff`, `tail`, `learnings`,
+`learnings-reset`, `setup`, `config`.
+
+```bash
+# 직접 실행도 가능 — 스크립트/CI/임의 에이전트에서 (순수 Node, 의존성 0):
+node server/cli.js detect --projectPath /path/to/UEProject
+node server/cli.js search --path Editor.log --severityMin Error --groupBy callsite
+node server/cli.js fields --path trace.log --fields Pawn,Alpha,ts --query Tick --max 20
+node server/cli.js diff   --pathA before.log --pathB after.log --severityMin Error
+node server/cli.js --help
+```
+
+## 선택: MCP 서버 켜기
+같은 엔진([`server/logs.js`](server/logs.js) + [`server/core.js`](server/core.js))을 MCP 서버로도
+돌릴 수 있습니다(타입드 `log_*` 도구, Claude Code 내 자동 발견). **기본 비활성**입니다 — 연결된 MCP
+서버는 **모든** 세션 프롬프트에 툴 스키마를 주입(상시 ~1–1.5k tok)하지만 CLI는 쓰기 전엔 0이기
+때문입니다. **~99% 절감은 출력 압축이라 양쪽 동일** — 차이는 상시 오버헤드뿐.
+
+타입드 도구/구조화 인자(셸 따옴표 불요)를 원하면 켜세요:
+
+```bash
+# 1) MCP SDK 1회 설치 (CLI는 의존성 0, MCP 서버만 필요)
+cd server && npm install && cd ..
+# 2) 플러그인 루트에 .mcp.json 추가 후 /reload-plugins:
+#    { "mcpServers": { "ue-log": { "command": "node",
+#      "args": ["${CLAUDE_PLUGIN_ROOT}/server/index.js"] } } }
+```
+
+도구: `log_detect`, `log_summary`, `log_search`, `log_fields`, `log_diff`, `log_tail`,
+`log_learnings`, `log_learnings_reset`, `log_setup`, `log_config` — CLI와 byte 동일 출력.
 
 ## 사전 요구사항
-- PATH에 **Node.js ≥ 18**. (Rider/Unity 설치 불필요 — 로그 파일만 읽음.)
+- PATH에 **Node.js ≥ 18**. (Rider/Unity 설치 불필요 — 로그 파일만 읽음. 기본 CLI 경로는 **npm 의존성
+  0**; 선택적 MCP 서버만 `npm install` 필요.)
 
 ## 설치
 ```bash
 /plugin marketplace add JSungMin/rider-mcp-enforcer
 /plugin install ue-log-analyzer@rider-mcp-enforcer
-/reload-plugins                               # 첫 실행 시 의존성 자동 설치 (수동 npm 불필요)
+/reload-plugins
 /ue-log-analyzer:logs                         # 또는 "에디터 로그 확인해줘"
 ```
-(`rider-mcp-enforcer`를 설치하면 이것도 자동으로 함께 설치됩니다 —
-[마켓플레이스](../README.ko.md#마켓플레이스--2개-플러그인) 참고.)
+빌드도, `npm install`도 없음 — CLI는 순수 Node. (`rider-mcp-enforcer`를 설치하면 이것도 자동으로 함께
+설치됩니다.) 타입드 MCP 도구를 원하면 [선택: MCP 서버 켜기](#선택-mcp-서버-켜기) 참고.
 
 ## 설정
-설정은 `~/.ue-log-analyzer/config.json` (우선순위: env > config > 기본값). `/ue-log-analyzer:logs`
-(내부 `log_setup`) 또는 `log_setup` 도구 / 환경변수로 설정:
+설정은 `~/.ue-log-analyzer/config.json` (우선순위: env > config > 기본값). `ue-log setup …`(예:
+`node server/cli.js setup --projectPath "<dir>"`) 또는 환경변수로 설정:
 
 | env | config 키 | 기본값 | 의미 |
 | --- | --- | --- | --- |
@@ -71,6 +107,16 @@ Unity `Editor.log`는 보통 수십 MB의 반복 스팸이라 `cat`/`grep`하면
 쓰기](../README.ko.md#두-플러그인-함께-쓰기) 참고.
 
 ## Changelog
+- **0.2.0** — **기본 CLI 전용**(토큰 우선): MCP 서버 **기본 비활성**(`.mcp.json`·SessionStart 자동
+  `npm install` 제거) → 상시 MCP 스키마 세금(~1–1.5k tok/세션) 제거. 새 **skill**(`skills/logs/`)이
+  로그 작업을 자동 발견해 `ue-log` CLI를 Bash로 구동. 기본 경로 **npm 의존성 0**. MCP는 opt-in(*선택:
+  MCP 서버 켜기* 참고). 기존 MCP 사용자: `.mcp.json` + `npm install`로 타입드 도구 유지.
+- **0.1.4** — **CLI 프론트엔드**(`ue-log <command>`): MCP 서버와 같은 엔진(공유 `core.js` `runTool`),
+  byte 동일 출력, 단 **상시 컨텍스트 비용 0** + Claude Code 밖(스크립트/CI/타 에이전트) 이식 가능.
+- **0.1.3** — `log_diff`: 두 로그 비교 후 델타만 출력(신규/사라짐/카운트변경 그룹, 변경없는 그룹 생략)
+  — 실행 간 회귀 분류를 토큰 저렴하게.
+- **0.1.2** — 로컬 **learnings 원장**(`log_learnings`/`log_learnings_reset`): 파싱 커버리지·상위
+  카테고리·미파싱 라인 템플릿 추적(새 파서 후보). Sanitized, 전송 안 함. 자체 eval + CI.
 - **0.1.1** — 서버 의존성을 세션 시작 시 자동 설치(`${CLAUDE_PLUGIN_DATA}` + 동적 SDK 해석) — 수동
   `npm install` 불필요.
 - **0.1.0** — 최초: `log_detect`/`log_search`/`log_summary`/`log_fields`/`log_tail` +
