@@ -338,9 +338,11 @@ Rider — MCP is off or the URL is wrong.
 
 ## Contributing
 
-Issues and PRs welcome — bug reports, new log formats/engines, additional Rider tool mappings, or
-docs. See the [PR flow](https://github.com/JSungMin/rider-mcp-enforcer/pulls); pre-push secret scan +
-README/Changelog updates expected with code changes.
+Issues and PRs welcome — bug reports, new log formats/engines, additional Rider tool mappings, or docs.
+
+This repo is maintained with **AI-assisted review**, so PRs are judged from the diff + description +
+evidence: keep them **small, clearly described, evidenced, and free of any proprietary data**. Please
+read **[CONTRIBUTING.md](CONTRIBUTING.md)** before opening a PR.
 
 **⭐ If this saved you tokens or debugging time, a star helps others find it.**
 
