@@ -41,7 +41,7 @@ $ grep -rn "AMyActor" Source/**/*.cpp
 - [마켓플레이스 — 2개 플러그인](#마켓플레이스--2개-플러그인) · [합산 절감](#합산-토큰-절감-실측) · [두 플러그인 함께 쓰기](#두-플러그인-함께-쓰기)
 - [무엇을 하나](#무엇을-하나) · [성능](#성능-실측) · [에디터 로그 분석](#에디터-로그-분석)
 - [사전 요구사항](#사전-요구사항) · [설치](#설치) · [설정](#설정-명령어) · [업데이트](#새-버전으로-업데이트)
-- [설정 항목](#설정-항목-env--config-키) · [문제 해결](#문제-해결) · [기여](#기여) · [Changelog](#changelog)
+- [설정 항목](#설정-항목-env--config-키) · [문제 해결](#문제-해결) · [기여](#기여) · [Releases](https://github.com/JSungMin/rider-mcp-enforcer/releases)
 
 ---
 
@@ -238,8 +238,9 @@ Claude Code는 마켓플레이스 repo를 캐시하므로 새 커밋이 **자동
 구버전 — 위 절차로 업데이트하세요.
 
 > 유지보수 참고: `.claude-plugin/plugin.json`의 `version` 필드가 업데이트 게이트 — 클라이언트가
-> 변경을 받게 하려면 버전을 올리세요. 소스 변경 시 config 키/명령어/도구 목록과 아래 **Changelog**를
-> 같은 커밋에서 갱신해야 합니다.
+> 변경을 받게 하려면 버전을 올리세요. 소스 변경 시 config 키/명령어/도구 목록을 같은 커밋에서
+> 갱신해야 합니다. 버전 히스토리는 [Releases](https://github.com/JSungMin/rider-mcp-enforcer/releases)에
+> 있습니다(각 `v*` 태그에서 자동 생성) — README가 아님.
 
 ## 설정 항목 (env / config 키)
 
@@ -314,26 +315,11 @@ Claude Code에서 `rider-search` 서버가 실제 Rider 도구들(`search_symbol
 - 트랜스포트는 SSE. 빌드가 stdio만 지원하면 이슈를 올려주세요 — stdio 클라이언트 모드를 추가할 수
   있습니다.
 
-## Changelog
+## 버전 히스토리
 
-- **0.1.10** — 자가학습 tool map: 무엇을 요약할지 하드코딩 이름목록이 아니라 **응답 형태**(Rider list
-  JSON)로 판단. Rider 버전/도구 rename에 자동 적응, `read_file` 같은 비-list 도구 절대 미변형, 자동
-  증액은 `limit` 스키마 있는 도구만. `RIDER_SUMMARIZE_TOOLS`는 선택 제한 필터로.
-- **0.1.9** — 한 번에 설치: `ue-log-analyzer`를 의존성으로 선언(한 번 `/plugin install`로 둘 다) +
-  프록시 `npm install`을 세션 시작 시 자동 실행(`${CLAUDE_PLUGIN_DATA}` + 동적 SDK 해석) — 수동 npm 불필요.
-- **0.1.8** — 훅 수정: 세그먼트의 **실제 명령**이 검색도구일 때만 차단(`node setup.mjs`/`cd`나
-  `plugins`/`source`/`rg`를 포함한 경로·인자 오탐 제거); 한국어 README 추가.
-- **0.1.7** — Claude 내장 setup + savings를 타입형 슬래시 명령(`commands/`)으로; config 파일
-  `~/.rider-mcp-enforcer/config.json` (env > config > 기본값); `rider_setup`/`rider_config`/
-  `rider_detect` 도구; `setup.mjs`.
-- **0.1.6** — 빌드 산출물 기본 제외 필터; 누적 토큰 절감 ledger + `rider_savings` 도구 / `/savings` /
-  `stats.mjs`.
-- **0.1.5** — 잘림을 절대 조용히 처리 안 함: 1회 자동 증액 후 `INCOMPLETE` 경고; per-line 상한.
-- **0.1.4** — 토큰/시간 실측 벤치마크 + 정확도 분석 (BENCHMARK.md).
-- **0.1.3** — Rider MCP는 IDE에 열린 프로젝트만 검색함을 문서화.
-- **0.1.2** — 실제 Rider MCP 도구 스키마에 정렬(라이브 검증).
-- **0.1.1** — 꺼짐/도달불가 Rider MCP 처리 (`RIDER_ENFORCE=0` 탈출구).
-- **0.1.0** — 최초: JetBrains-MCP 재사용 + grep 차단 훅 + 라우팅 스킬 + 요약 프록시.
+**[Releases](https://github.com/JSungMin/rider-mcp-enforcer/releases)** 페이지 참고 — 버전 태그마다
+카테고리·PR 링크된 노트(🚀 Features / 🐛 Bug Fixes / 📝 Documentation / 🔧 Maintenance)가 자동
+생성됩니다. 상단 배지는 항상 최신을 가리킵니다.
 
 ## 기여
 
