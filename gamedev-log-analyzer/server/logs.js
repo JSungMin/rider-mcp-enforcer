@@ -547,7 +547,7 @@ export function collectLearnings(text, maxSamples = 8) {
     }
     const shape = raw
       .replace(/0x[0-9a-fA-F]+/g, "<x>")
-      .replace(/[A-Za-z]:[\/][^\s'"]+/g, "<path>")
+      .replace(/[A-Za-z]:\/[^\s'"]+/g, "<path>")
       .replace(/"[^"]*"/g, '"<q>"')
       .replace(/-?\d+(?:\.\d+)?/g, "<n>")
       .trim()

@@ -1,0 +1,31 @@
+name: npm-publish (gamedev-log-analyzer)
+
+# Publishes the gamedev-log-analyzer CLI/MCP package to npm so it can be used without an IDE
+# (`npx -p gamedev-log-analyzer gamedev-log <cmd>` or `npm i -g gamedev-log-analyzer`).
+# Trigger: a `gamedev-v*` tag (e.g. gamedev-v0.3.1) or a manual run. Requires an NPM_TOKEN secret.
+on:
+  workflow_dispatch:
+  push:
+    tags: ["gamedev-v*"]
+
+permissions:
+  contents: read
+  id-token: write # npm provenance
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+      - name: Sanity — CLI runs dependency-free
+        working-directory: gamedev-log-analyzer/server
+        run: node cli.js config
+      - name: Publish to npm
+        working-directory: gamedev-log-analyzer/server
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

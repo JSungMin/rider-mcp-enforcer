@@ -1,0 +1,23 @@
+{
+  "name": "rider-mcp-enforcer-dev",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Dev tooling (lint/format/test) for the rider-mcp-enforcer marketplace. Not published; the plugins live in proxy/ and gamedev-log-analyzer/.",
+  "scripts": {
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test:proxy": "node --test proxy/test",
+    "eval": "node gamedev-log-analyzer/eval/run.mjs",
+    "test": "npm run test:proxy && npm run eval",
+    "bump": "node scripts/bump.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "eslint": "^9.0.0",
+    "globals": "^15.0.0",
+    "prettier": "^3.0.0"
+  },
+  "engines": { "node": ">=18" }
+}

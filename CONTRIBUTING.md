@@ -33,10 +33,31 @@ unverifiable PRs may be slow or declined.
 
 ## Local checks before you push
 
-- `node --check` your changed `.js`/`.mjs` files.
-- `claude plugin validate` (manifest check the review also runs).
+Install dev tooling once at the repo root (`npm install`), then:
+
+- `npm test` — proxy unit tests (`node --test`) + the gamedev-log-analyzer eval gate.
+- `npm run lint` — ESLint over the whole repo (CI runs this too).
+- `npm run format` — Prettier (optional; CI does not gate on formatting).
+- `node --check` your changed `.js`/`.mjs` files; `claude plugin validate` for manifest changes.
 - For server changes: start the MCP server and confirm it lists tools (see the README for dev usage).
 - Scan your diff **and** commit messages for any internal names before pushing.
+
+CI (`.github/workflows/test.yml`) runs the tests on **Windows + Linux** across **Node 18/20/22** and
+lints — so a cross-platform issue (like a Windows-only path bug) fails the matrix, not your users.
+
+## Releasing (maintainer)
+
+Plugin versions live in several files (each plugin's `plugin.json`, the marketplace entry, and the npm
+`package.json`). Keep them in sync with the bumper instead of editing by hand:
+
+```bash
+node scripts/bump.mjs <rider|gamedev|both> <major|minor|patch>   # --dry-run to preview, --tag to tag
+# Windows: .\scripts\bump.ps1 both patch
+```
+
+It rewrites every version location for the chosen plugin, then prints the tag to push. Pushing a
+`v*` tag (rider) triggers the GitHub Release; a `gamedev-v*` tag triggers the npm publish workflow
+(needs an `NPM_TOKEN` repo secret).
 
 ## Review and merge
 

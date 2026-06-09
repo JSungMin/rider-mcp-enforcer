@@ -1,11 +1,41 @@
 {
-  "name": "gamedev-log-analyzer-server",
-  "version": "0.3.0",
-  "private": true,
+  "name": "gamedev-log-analyzer",
+  "version": "0.3.2",
   "type": "module",
-  "description": "MCP server + CLI for gamedev-log-analyzer — parses/dedups/classifies game-engine/build logs.",
-  "bin": { "gamedev-log-analyzer": "index.js", "gamedev-log": "cli.js" },
-  "dependencies": {
+  "description": "Token-efficient game-engine & build log analysis (Unreal/Unity/Godot/MSVC-UBT-MSBuild) for the CLI and MCP — parse, dedup, classify by severity/category, diff runs, locate file:line, and extract scalar fields. No IDE required.",
+  "keywords": [
+    "unreal",
+    "unreal-engine",
+    "ue5",
+    "unity",
+    "godot",
+    "log",
+    "log-analysis",
+    "build-log",
+    "mcp",
+    "claude",
+    "claude-code",
+    "gamedev"
+  ],
+  "homepage": "https://github.com/JSungMin/rider-mcp-enforcer/tree/main/gamedev-log-analyzer",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JSungMin/rider-mcp-enforcer.git",
+    "directory": "gamedev-log-analyzer/server"
+  },
+  "bugs": { "url": "https://github.com/JSungMin/rider-mcp-enforcer/issues" },
+  "license": "MIT",
+  "author": { "name": "JSungMin" },
+  "bin": {
+    "gamedev-log": "cli.js",
+    "gamedev-log-analyzer": "index.js"
+  },
+  "files": ["index.js", "cli.js", "core.js", "logs.js", "sdk.js", "ensure-deps.mjs", "README.md"],
+  "scripts": {
+    "start": "node index.js",
+    "test": "node ../eval/run.mjs"
+  },
+  "optionalDependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0"
   },
   "engines": { "node": ">=18" }
