@@ -14,10 +14,24 @@
 > 마켓플레이스: 코드베이스를 `grep` 대신 **Rider 인덱스**로 검색하고, **수십 MB 에디터 로그**를
 > 분석 — 둘 다 **~99% 적은 토큰**으로.
 
-<!-- DEMO: docs/demo.gif 추가 후 아래 줄을 <img>로 교체:
-<p align="center"><img src="docs/demo.gif" alt="demo" width="760"></p>
--->
-<p align="center"><em>📽️ 데모 GIF 준비 중 — 아래 수치가 먼저 말해줍니다.</em></p>
+### 실제 모습
+```text
+# Claude가 코드를 grep 시도 → 훅이 차단하고 리다이렉트:
+$ grep -rn "AMyActor" Source/**/*.cpp
+⛔ [rider-mcp-enforcer] 코드 심볼 검색 차단. search_symbol / search_text 사용.
+
+▶ search_symbol "AMyActor"
+  Source/Game/MyActor.h:42   class MYGAME_API AMyActor : public APawn   (+3 more)
+  → ~120 토큰   (grep이면 ~14,000 덤프)
+
+# 52MB 에디터 로그 → 파싱·dedup·분류:
+▶ /ue-log-analyzer:logs
+  41,233줄 · 에러 7 · 경고 312
+  ERROR   [LogStreaming] Failed to load asset <addr>         (×128)   @ AssetManager.cpp:210
+  WARNING [LogPhysics]   Penetration depth <n> exceeds limit (×4,051) @ MyComponent.cpp:88
+  → ~900 토큰   (raw 로그 ≈ 1,300,000)
+```
+<sub>placeholder 심볼을 쓴 예시 출력.</sub>
 
 ### 이런 경험 있나요?
 - 🔍 **거대 Unreal C++ repo에서 `grep`이 컨텍스트를 폭발** → Rider 인덱스로 검색, 토큰 상한 (**~99% 절감** — [벤치마크](#합산-토큰-절감-실측)).
