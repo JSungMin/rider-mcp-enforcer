@@ -37,6 +37,9 @@ Quote every path argument (Windows paths/spaces). `--help` lists everything.
 - `diff` — compare two logs, emit ONLY the delta (new / gone / count-changed groups; unchanged
   omitted). `--pathA <before> --pathB <after>`, or omit both to auto-pick the two newest detected
   logs. Same filters as `search` plus `--minDelta N`. Token-cheap "what changed since last run?".
+- `locate` — jump list: just the distinct `file:line` of matched entries (no message bodies), ranked
+  by severity then count. `--severityMin Error` (default) · `--basename` (strip to filename, for
+  Rider's name search) · `--query --category --file --max`. The compact handoff for opening source.
 - `fields` — pull just decisive scalars from dense per-frame trace logs into a compact table.
   `--fields Pawn,Alpha,ts,Pos.x,step:Pos,d:Yaw` (forms: `Key`, `Key.x|.y|.z`, `Key.Y|.P|.R`, `ts`,
   `dts`, `d:Key`, `step:Key`) · `--query` · `--window t0,t1` · `--max N`. Biggest win on per-frame logs.
@@ -56,10 +59,23 @@ node "${CLAUDE_PLUGIN_ROOT}/server/cli.js" search  --path "<log>" --severityMin 
 Then report the errors with their `file:line` locations. For per-frame/trace noise use `fields`; for
 regression triage across two runs use `diff`.
 
-## Pairs with rider-mcp-enforcer
+## Jump from a log error to the source (with rider-mcp-enforcer)
 
-Log entries carry `file:line`. If `rider-mcp-enforcer` is installed, feed those locations to its
-`get_symbol_info` / `read_file` to jump straight to the source.
+Log entries carry `file:line`. When the user wants to **open / fix the offending code** and
+`rider-mcp-enforcer` is installed, use this token-frugal loop instead of reading whole files:
+
+1. **Get the jump list** — distinct locations only, no bodies:
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/server/cli.js" locate --path "<log>" --severityMin Error --basename
+   ```
+   `--basename` strips paths to `Foo.cpp:123` so Rider's filename search can resolve them.
+2. **Resolve each filename → full path** via Rider: `find_files_by_name_keyword` (or `search_file`)
+   with the basename. Logs often carry partial/relative paths; Rider's index has the real one.
+3. **Read just the relevant window** at that line via Rider `read_file` (a small line range around the
+   number), or `get_symbol_info` for the enclosing symbol — never dump the whole file.
+
+Skip `locate` and read directly only when there's a single known location. For many errors, `locate`
+first so you batch-resolve the distinct callsites instead of re-scanning the log per file.
 
 ## Why CLI (not an MCP server) by default
 

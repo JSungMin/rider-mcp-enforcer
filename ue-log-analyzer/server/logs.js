@@ -318,6 +318,70 @@ export function analyzeLog(text, opts = {}) {
   return `${header}\n\n${body || "(no matching entries)"}${footer}`;
 }
 
+// ---- locate (jump list: distinct file:line locations only, no message bodies) ----
+// The most compact handoff for "open the offending source": dedup matched entries down to their
+// callsite locations, ranked by severity then frequency. Pairs with rider-mcp-enforcer — feed the
+// (basename) locations to find_files_by_name_keyword → read_file at the line. Entries with no
+// parseable location are counted but cannot be jumped to, so they're reported as a tail note.
+export function locateLog(text, opts = {}) {
+  const {
+    query = "",
+    severityMin = "Error",
+    category = "",
+    file = "",
+    max = 60,
+    basename = false,
+  } = opts;
+  const minRank = rank(severityMin);
+  const q = String(query).toLowerCase();
+  const catLc = String(category).toLowerCase();
+  const fileLc = String(file).toLowerCase();
+
+  const locs = new Map(); // file:line -> { loc, severity (strongest), count, cats:Set }
+  let matched = 0,
+    noLoc = 0;
+  for (const raw of text.split(/\r?\n/)) {
+    const e = parseLine(raw);
+    if (!e) continue;
+    if (rank(e.severity) < minRank) continue;
+    if (catLc && e.category.toLowerCase() !== catLc) continue;
+    if (fileLc && !e.location.toLowerCase().includes(fileLc)) continue;
+    if (q && !e.message.toLowerCase().includes(q) && !e.category.toLowerCase().includes(q)) continue;
+    matched++;
+    if (!e.location) {
+      noLoc++;
+      continue;
+    }
+    const loc = basename ? e.location.replace(/^.*[\\/]/, "") : e.location;
+    let g = locs.get(loc);
+    if (!g) {
+      g = { loc, severity: e.severity, count: 0, cats: new Set() };
+      locs.set(loc, g);
+    }
+    g.count++;
+    g.cats.add(e.category);
+    if (rank(e.severity) > rank(g.severity)) g.severity = e.severity;
+  }
+
+  const sorted = [...locs.values()].sort(
+    (a, b) => rank(b.severity) - rank(a.severity) || b.count - a.count || a.loc.localeCompare(b.loc)
+  );
+  const shown = sorted.slice(0, max);
+  const header =
+    `Jump list — ${sorted.length} distinct location(s) from ${matched} matched entr(y/ies) ` +
+    `(filter: severity≥${severityMin}${category ? `, category=${category}` : ""}` +
+    `${file ? `, file~${file}` : ""}${query ? `, query="${query}"` : ""}${basename ? ", basename" : ""}).`;
+  const body = shown
+    .map((g) => `${g.severity.toUpperCase()}  ${g.loc}  (×${g.count})  [${[...g.cats].slice(0, 3).join(",")}]`)
+    .join("\n");
+  const more = sorted.length - shown.length;
+  const footer =
+    (more > 0 ? `\n… ${more} more location(s) (raise max or filter).` : "") +
+    (noLoc ? `\n(${noLoc} matched entr(y/ies) had no parseable file:line — not jumpable.)` : "") +
+    (sorted.length === 0 ? `\n(no jumpable locations — lower severityMin or widen the filter.)` : "");
+  return `${header}\n\n${body || "(none)"}${footer}`;
+}
+
 // ---- diff (compare two logs; emit ONLY the delta) ----
 // Tally each side into templated groups, then report new / gone / count-changed
 // groups only. Unchanged groups are omitted entirely — that omission IS the token

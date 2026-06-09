@@ -7,7 +7,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { detectLogs, readText, analyzeLog, extractFields, collectLearnings, diffLogs } from "./logs.js";
+import { detectLogs, readText, analyzeLog, extractFields, collectLearnings, diffLogs, locateLog } from "./logs.js";
 
 const CONFIG_DIR = path.join(os.homedir(), ".ue-log-analyzer");
 export const CONFIG_FILE = process.env.UELOG_CONFIG_FILE || path.join(CONFIG_DIR, "config.json");
@@ -170,6 +170,19 @@ export function runTool(name, a = {}) {
     }
     const text = readText(lp, LOG_MAX_BYTES);
     try { recordLearnings(text); } catch { /* learnings are best-effort */ }
+    if (name === "log_locate") {
+      return out(
+        `Source: ${lp}\n` +
+          locateLog(text, {
+            query: a.query || "",
+            severityMin: a.severityMin || "Error",
+            category: a.category || "",
+            file: a.file || "",
+            max: Number(a.max) > 0 ? Number(a.max) : 60,
+            basename: a.basename === true || a.basename === "true",
+          })
+      );
+    }
     if (name === "log_fields") {
       return out(
         `Source: ${lp}\n` +

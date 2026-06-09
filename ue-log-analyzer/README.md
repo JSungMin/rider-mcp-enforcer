@@ -50,7 +50,7 @@ always-on context cost** (nothing sits in the prompt until a log is actually rel
 node "${CLAUDE_PLUGIN_ROOT}/server/cli.js" <command> [--flags]
 ```
 
-**Commands** (`ue-log <command>`): `detect`, `summary`, `search`, `fields`, `diff`, `tail`,
+**Commands** (`ue-log <command>`): `detect`, `summary`, `search`, `fields`, `diff`, `locate`, `tail`,
 `learnings`, `learnings-reset`, `setup`, `config`.
 
 ```bash
@@ -59,8 +59,13 @@ node server/cli.js detect --projectPath /path/to/UEProject
 node server/cli.js search --path Editor.log --severityMin Error --groupBy callsite
 node server/cli.js fields --path trace.log --fields Pawn,Alpha,ts --query Tick --max 20
 node server/cli.js diff   --pathA before.log --pathB after.log --severityMin Error
+node server/cli.js locate --path Editor.log --severityMin Error --basename
 node server/cli.js --help
 ```
+
+**Jump from a log error to the source** — `locate` emits just the distinct `file:line` (no message
+bodies). If [rider-mcp-enforcer](../README.md) is installed, resolve each basename via its
+`find_files_by_name_keyword`, then `read_file` a small window at that line — never dump whole files.
 
 ## Optional: enable the MCP server
 The same engine ([`server/logs.js`](server/logs.js) + [`server/core.js`](server/core.js)) also runs as
@@ -115,6 +120,9 @@ locations to its `get_symbol_info` / `read_file` to jump straight to the source.
 [Using both together](../README.md#using-both-together).
 
 ## Changelog
+- **0.2.1** — `log_locate` (CLI `locate`): jump list of distinct `file:line` for matched entries (no
+  message bodies), ranked by severity then count; `--basename` strips paths for Rider's filename
+  search. The compact handoff for opening offending source via rider-mcp-enforcer.
 - **0.2.0** — **CLI-only by default** (token-first): the MCP server is now **off by default** (no
   `.mcp.json`, no SessionStart auto-`npm install`) — eliminates the always-on MCP schema tax (~1–1.5k
   tok/session). A new **skill** (`skills/logs/`) auto-discovers log work and drives the `ue-log` CLI via

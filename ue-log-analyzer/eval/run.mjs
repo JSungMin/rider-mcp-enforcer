@@ -6,7 +6,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { analyzeLog, extractFields, parseLine, diffLogs } from "../server/logs.js";
+import { analyzeLog, extractFields, parseLine, diffLogs, locateLog } from "../server/logs.js";
 import { runTool } from "../server/core.js";
 
 // Deterministic synthetic UE-style log (generic names only).
@@ -58,6 +58,12 @@ const diffTok = tok(diff);
 const diffHasNew = /\+ NEW/.test(diff);
 const diffVsRaw = 1 - diffTok / rawTok; // honest win: delta vs re-reading the whole log
 
+// locate: jump list (distinct file:line only) must be a compact handoff and carry no message bodies.
+const locate = locateLog(log, { severityMin: "Error", basename: true });
+const locateTok = tok(locate);
+const locateHasLoc = /\.cpp:\d+/.test(locate); // jumpable basename:line present
+const locateNoBodies = !/undeclared identifier|null pointer/.test(locate); // no message text leaked
+
 // hybrid wiring: the shared runTool() (used by BOTH the MCP server and the CLI) must dispatch and
 // produce the same compact output as calling logs.js directly. Guards the core.js refactor.
 const tmp = path.join(os.tmpdir(), "ue-log-eval-core.log");
@@ -77,6 +83,9 @@ const rows = [
   ["log_diff surfaces NEW errors", diffHasNew, "true", diffHasNew],
   ["log_diff vs raw log", (diffVsRaw * 100).toFixed(1) + "%", "≥ 99%", diffVsRaw >= 0.99],
   ["runTool dispatch (MCP=CLI)", coreOk, "true", coreOk],
+  ["log_locate tokens (jump list)", locateTok, "≤ 150", locateTok <= 150],
+  ["log_locate has file:line", locateHasLoc, "true", locateHasLoc],
+  ["log_locate omits bodies", locateNoBodies, "true", locateNoBodies],
 ];
 
 console.log(`ue-log-analyzer eval — ${N} synthetic (sanitized) lines\n`);
