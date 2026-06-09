@@ -317,11 +317,26 @@ Rider — MCP is off or the URL is wrong.
 
 ## Status / caveats
 
-- **v0.1.x, pre-live-verification of the Rider tool schema.** Tool names target Rider 2025.2+. If your
-  build names a tool differently, check the `rider-search` tool list and set `RIDER_SUMMARIZE_TOOLS`.
+- **Live-verified against Rider 2025.2.3.** `search_text` and `search_symbol` are confirmed working on
+  a real Unreal Engine 5 project — the [benchmark](BENCHMARK.md) numbers were measured through them.
+  Tool names target Rider 2025.2+; if your build names a tool differently, check the `rider-search`
+  tool list and set `RIDER_SUMMARIZE_TOOLS`.
 - The summarizer is heuristic (keeps `path:line`-looking lines). Tune `RIDER_MAX_RESULTS` per repo.
 - Transport is SSE. If your Rider build only offers stdio, open an issue — a stdio client mode can be
   added.
+
+## Permissions & safety
+
+Everything runs **locally**; nothing is uploaded. Concretely:
+
+- The **hook** (`PreToolUse` on Bash) only inspects the command string to decide whether to redirect a
+  code-grep to Rider — it does not read file contents or run anything. It honors `RIDER_ENFORCE=0`.
+- The **proxy** connects only to Rider's MCP SSE endpoint on `localhost` and forwards/summarizes
+  search responses. It opens no outbound internet connections and writes only its config + a local
+  token-savings ledger under `~/.rider-mcp-enforcer/`.
+- **gamedev-log-analyzer** reads local log files you point it at and prints summaries.
+
+See [SECURITY.md](SECURITY.md) and [PRIVACY.md](PRIVACY.md).
 
 ## Version history
 
