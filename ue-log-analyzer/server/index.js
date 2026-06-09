@@ -11,7 +11,7 @@ import { Server, StdioServerTransport, ListToolsRequestSchema, CallToolRequestSc
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { detectLogs, readText, analyzeLog, extractFields } from "./logs.js";
+import { detectLogs, readText, analyzeLog, extractFields, collectLearnings } from "./logs.js";
 
 const CONFIG_DIR = path.join(os.homedir(), ".ue-log-analyzer");
 const CONFIG_FILE = process.env.UELOG_CONFIG_FILE || path.join(CONFIG_DIR, "config.json");
@@ -59,6 +59,44 @@ function applySetup(args) {
   fs.mkdirSync(path.dirname(CONFIG_FILE), { recursive: true });
   fs.writeFileSync(CONFIG_FILE, JSON.stringify(current, null, 2));
   return { current, changed };
+}
+
+// ---- learnings ledger (local, sanitized; never transmitted) ----
+const LEARN_FILE = cfg("UELOG_LEARN_FILE", "learnFile", path.join(CONFIG_DIR, "learnings.json"));
+const readLearn = () => {
+  try { return JSON.parse(fs.readFileSync(LEARN_FILE, "utf8")) || {}; } catch { return {}; }
+};
+function recordLearnings(text) {
+  const l = collectLearnings(text);
+  const s = readLearn();
+  s.runs = (s.runs || 0) + 1;
+  s.totalLines = (s.totalLines || 0) + l.total;
+  s.parsedLines = (s.parsedLines || 0) + l.parsed;
+  s.categories = s.categories || {};
+  for (const { k, v } of l.categories) s.categories[k] = (s.categories[k] || 0) + v;
+  s.misses = s.misses || {};
+  for (const { k, v } of l.misses) s.misses[k] = (s.misses[k] || 0) + v;
+  try {
+    fs.mkdirSync(path.dirname(LEARN_FILE), { recursive: true });
+    fs.writeFileSync(LEARN_FILE, JSON.stringify(s, null, 2));
+  } catch {
+    /* best-effort */
+  }
+}
+function learningsReport() {
+  const s = readLearn();
+  if (!s.runs) return "No learnings yet — run log_search / log_summary on some logs first.";
+  const cov = s.totalLines ? Math.round((s.parsedLines / s.totalLines) * 100) : 100;
+  const top = (o, n) => Object.entries(o || {}).sort((a, b) => b[1] - a[1]).slice(0, n);
+  const cats = top(s.categories, 10).map(([k, v]) => `  ${k}: ${v}`).join("\n") || "  (none)";
+  const miss = top(s.misses, 8).map(([k, v]) => `  ×${v}  ${k}`).join("\n") || "  (none — full coverage)";
+  return (
+    `ue-log-analyzer learnings (local, ${s.runs} run(s))\n` +
+    `  parse coverage: ${cov}% (${s.parsedLines}/${s.totalLines} lines)\n\n` +
+    `Top categories (filter noisy ones with category=, or they collapse via dedup):\n${cats}\n\n` +
+    `Unparsed line shapes (a new parser/category could cover these — please open an issue):\n${miss}\n\n` +
+    `Ledger: ${LEARN_FILE}`
+  );
 }
 
 const TOOLS = [
@@ -141,6 +179,18 @@ const TOOLS = [
       properties: { path: { type: "string" }, projectPath: { type: "string" }, lines: { type: "number" } },
     },
   },
+  {
+    name: "log_learnings",
+    description:
+      "Report what the analyzer is learning from your logs (local): parse coverage, top categories, " +
+      "and templated shapes of UNPARSED lines (candidates for a new parser/category). Sanitized.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "log_learnings_reset",
+    description: "Clear the local learnings ledger.",
+    inputSchema: { type: "object", properties: {} },
+  },
 ];
 
 const server = new Server({ name: "ue-log", version: "0.1.0" }, { capabilities: { tools: {} } });
@@ -164,6 +214,11 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           `\n\nConfig file: ${CONFIG_FILE}`
       );
     }
+    if (name === "log_learnings") return ok(learningsReport());
+    if (name === "log_learnings_reset") {
+      try { fs.writeFileSync(LEARN_FILE, "{}"); } catch { /* ignore */ }
+      return ok("Learnings ledger cleared.");
+    }
     if (name === "log_detect") {
       const found = detectLogs(a.projectPath || PROJECT_PATH);
       return ok(
@@ -183,6 +238,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       return ok(`Last ${tail.length} line(s) of ${lp}:\n` + tail.join("\n"));
     }
     const text = readText(lp, LOG_MAX_BYTES);
+    try { recordLearnings(text); } catch { /* learnings are best-effort */ }
     if (name === "log_fields") {
       return ok(
         `Source: ${lp}\n` +
