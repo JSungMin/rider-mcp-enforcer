@@ -335,8 +335,11 @@ Claude Code에서 `rider-search` 서버가 실제 Rider 도구들(`search_symbol
 
 ## 기여
 
-이슈·PR 환영 — 버그 리포트, 새 로그 포맷/엔진, Rider 도구 매핑 추가, 문서 등. 코드 변경 시 push 전
-사내정보 스캔 + README/Changelog 갱신을 함께 해주세요.
+이슈·PR 환영 — 버그 리포트, 새 로그 포맷/엔진, Rider 도구 매핑 추가, 문서 등.
+
+이 repo는 **AI 보조 리뷰**로 유지보수됩니다. 즉 PR은 diff + 설명 + 증거로 판단되니 **작고, 명확히
+설명되고, 증거가 있고, 사내정보가 없게** 올려주세요. PR 전 **[CONTRIBUTING.md](CONTRIBUTING.md)**를
+읽어주세요.
 
 **⭐ 토큰이나 디버깅 시간을 아꼈다면, star가 다른 사람들의 발견을 돕습니다.**
 
