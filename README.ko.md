@@ -13,6 +13,13 @@
 > 마켓플레이스: 코드베이스를 `grep` 대신 **Rider 인덱스**로 검색하고, **수십 MB 에디터 로그**를
 > 분석 — 둘 다 **~99% 적은 토큰**으로.
 
+### 데모
+
+`gamedev-log-analyzer`가 6,000줄 합성 엔진 로그를 수백 토큰으로 줄이는 모습
+(`summary` / `search` / `locate` / `diff`):
+
+![gamedev-log-analyzer 데모](demo/demo.svg)
+
 ### 실제 모습
 ```text
 # Claude가 코드를 grep 시도 → 훅이 차단하고 리다이렉트:
