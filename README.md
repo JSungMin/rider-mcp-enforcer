@@ -240,6 +240,12 @@ Check what's installed with `/plugin` (it lists each plugin's version). If a com
 > you want clients to pick up changes. Config keys/commands/tools must be updated in the same commit as
 > any source change; version history lives in [Releases](https://github.com/JSungMin/rider-mcp-enforcer/releases)
 > (auto-generated on each `v*` tag), not in this README.
+>
+> **Release/version sync:** the git tag equals the **headline plugin** version — every release bumps
+> `rider-mcp-enforcer` (plugin.json + marketplace.json) to `X.Y.Z` and tags `vX.Y.Z` (identical), so
+> `/plugin update rider-mcp-enforcer` always delivers the latest bundle. Because changes often land in
+> the bundled `gamedev-log-analyzer` (which keeps its own independent semver), the headline plugin must
+> still bump on those releases — otherwise clients see "already at latest" and never receive the update.
 
 ## Configuration (env)
 

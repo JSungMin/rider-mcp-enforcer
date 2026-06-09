@@ -1,7 +1,7 @@
 {
   "name": "rider-mcp-enforcer",
   "description": "Force Claude Code to use Rider's MCP symbol/reference/file index instead of Bash grep, with token-flood summarization. Faster and fewer tokens on large Unreal C++/.NET codebases. Auto-installs gamedev-log-analyzer.",
-  "version": "0.1.12",
+  "version": "0.1.17",
   "author": { "name": "JSungMin" },
   "homepage": "https://github.com/JSungMin/rider-mcp-enforcer",
   "repository": "https://github.com/JSungMin/rider-mcp-enforcer",
