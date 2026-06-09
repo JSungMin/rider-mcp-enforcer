@@ -1,16 +1,16 @@
 /*
- * ue-log-analyzer core — transport-agnostic dispatch.
- * Both the MCP server (index.js) and the CLI (bin/ue-log.mjs) call runTool(name, args)
+ * gamedev-log-analyzer core — transport-agnostic dispatch.
+ * Both the MCP server (index.js) and the CLI (cli.js, `gamedev-log`) call runTool(name, args)
  * and render the SAME text, so there is exactly one implementation of each tool.
- * Pure file parsing. Settings: env var > ~/.ue-log-analyzer/config.json > default.
+ * Pure file parsing. Settings: env var > ~/.gamedev-log-analyzer/config.json > default.
  */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { detectLogs, readText, analyzeLog, extractFields, collectLearnings, diffLogs, locateLog } from "./logs.js";
 
-const CONFIG_DIR = path.join(os.homedir(), ".ue-log-analyzer");
-export const CONFIG_FILE = process.env.UELOG_CONFIG_FILE || path.join(CONFIG_DIR, "config.json");
+const CONFIG_DIR = path.join(os.homedir(), ".gamedev-log-analyzer");
+export const CONFIG_FILE = process.env.GDLOG_CONFIG_FILE || path.join(CONFIG_DIR, "config.json");
 let fileCfg = {};
 try {
   fileCfg = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8")) || {};
@@ -24,11 +24,11 @@ function cfg(envName, key, def) {
   if (v !== undefined && v !== null && v !== "") return v;
   return def;
 }
-export const PROJECT_PATH = cfg("UELOG_PROJECT_PATH", "projectPath", "");
-export const LOG_PATH = cfg("UELOG_PATH", "logPath", "");
-export const LOG_MAX_BYTES = parseInt(cfg("UELOG_MAX_BYTES", "logMaxBytes", "5000000"), 10) || 5000000;
-export const MAX_GROUPS = parseInt(cfg("UELOG_MAX_GROUPS", "maxGroups", "40"), 10) || 40;
-export const MAX_LINE_CHARS = parseInt(cfg("UELOG_MAX_LINE_CHARS", "maxLineChars", "200"), 10) || 200;
+export const PROJECT_PATH = cfg("GDLOG_PROJECT_PATH", "projectPath", "");
+export const LOG_PATH = cfg("GDLOG_PATH", "logPath", "");
+export const LOG_MAX_BYTES = parseInt(cfg("GDLOG_MAX_BYTES", "logMaxBytes", "5000000"), 10) || 5000000;
+export const MAX_GROUPS = parseInt(cfg("GDLOG_MAX_GROUPS", "maxGroups", "40"), 10) || 40;
+export const MAX_LINE_CHARS = parseInt(cfg("GDLOG_MAX_LINE_CHARS", "maxLineChars", "200"), 10) || 200;
 const CONFIG_KEYS = ["projectPath", "logPath", "logMaxBytes", "maxGroups", "maxLineChars"];
 
 function resolveLogPath(a) {
@@ -55,7 +55,7 @@ function applySetup(args) {
 }
 
 // ---- learnings ledger (local, sanitized; never transmitted) ----
-const LEARN_FILE = cfg("UELOG_LEARN_FILE", "learnFile", path.join(CONFIG_DIR, "learnings.json"));
+const LEARN_FILE = cfg("GDLOG_LEARN_FILE", "learnFile", path.join(CONFIG_DIR, "learnings.json"));
 const readLearn = () => {
   try { return JSON.parse(fs.readFileSync(LEARN_FILE, "utf8")) || {}; } catch { return {}; }
 };
@@ -84,7 +84,7 @@ function learningsReport() {
   const cats = top(s.categories, 10).map(([k, v]) => `  ${k}: ${v}`).join("\n") || "  (none)";
   const miss = top(s.misses, 8).map(([k, v]) => `  ×${v}  ${k}`).join("\n") || "  (none — full coverage)";
   return (
-    `ue-log-analyzer learnings (local, ${s.runs} run(s))\n` +
+    `gamedev-log-analyzer learnings (local, ${s.runs} run(s))\n` +
     `  parse coverage: ${cov}% (${s.parsedLines}/${s.totalLines} lines)\n\n` +
     `Top categories (filter noisy ones with category=, or they collapse via dedup):\n${cats}\n\n` +
     `Unparsed line shapes (a new parser/category could cover these — please open an issue):\n${miss}\n\n` +

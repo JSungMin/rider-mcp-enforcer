@@ -1,0 +1,12 @@
+{
+  "name": "gamedev-log-analyzer-server",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "description": "MCP server + CLI for gamedev-log-analyzer — parses/dedups/classifies game-engine/build logs.",
+  "bin": { "gamedev-log-analyzer": "index.js", "gamedev-log": "cli.js" },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0"
+  },
+  "engines": { "node": ">=18" }
+}

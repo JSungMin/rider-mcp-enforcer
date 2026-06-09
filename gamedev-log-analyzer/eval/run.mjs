@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Self-contained eval for ue-log-analyzer. Generates a SYNTHETIC, sanitized log (no real project
+// Self-contained eval for gamedev-log-analyzer. Generates a SYNTHETIC, sanitized log (no real project
 // data) and measures the core promises: parse coverage, token reduction, dedup collapse, and
 // field-extraction size. Exits non-zero if any metric falls below threshold — a regression guard
 // and a measurable target for future self-improvement. No dependencies (pure logs.js); CI-friendly.
@@ -66,7 +66,7 @@ const locateNoBodies = !/undeclared identifier|null pointer/.test(locate); // no
 
 // hybrid wiring: the shared runTool() (used by BOTH the MCP server and the CLI) must dispatch and
 // produce the same compact output as calling logs.js directly. Guards the core.js refactor.
-const tmp = path.join(os.tmpdir(), "ue-log-eval-core.log");
+const tmp = path.join(os.tmpdir(), "gamedev-log-eval-core.log");
 fs.writeFileSync(tmp, log);
 const viaCore = runTool("log_search", { path: tmp, severityMin: "Warning", groupBy: "callsite" });
 // runTool prepends "Source: <path>\n" then the exact engine output → must end with it byte-for-byte.
@@ -105,7 +105,7 @@ const rows = [
   ["multi-engine classify (synthetic)", engineOk, "true", engineOk],
 ];
 
-console.log(`ue-log-analyzer eval — ${N} synthetic (sanitized) lines\n`);
+console.log(`gamedev-log-analyzer eval — ${N} synthetic (sanitized) lines\n`);
 let ok = true;
 for (const [name, val, thr, pass] of rows) {
   console.log(`${pass ? "✓" : "✗"} ${name.padEnd(30)} ${String(val).padStart(8)}   ${thr}`);

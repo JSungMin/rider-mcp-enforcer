@@ -1,12 +1,12 @@
 name: eval
 on: [push, pull_request]
 jobs:
-  ue-log-eval:
+  gamedev-log-eval:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: ue-log-analyzer eval (token reduction + parse coverage)
-        run: node ue-log-analyzer/eval/run.mjs
+      - name: gamedev-log-analyzer eval (token reduction + parse coverage)
+        run: node gamedev-log-analyzer/eval/run.mjs

@@ -1,4 +1,4 @@
-# rider-mcp-enforcer · ue-log-analyzer
+# rider-mcp-enforcer · gamedev-log-analyzer
 
 **English** · [한국어](README.ko.md)
 
@@ -24,7 +24,7 @@ $ grep -rn "AMyActor" Source/**/*.cpp
   → ~120 tokens   (grep would have dumped ~14,000)
 
 # A 52 MB editor log → parsed, deduped, classified:
-▶ /ue-log-analyzer:logs
+▶ /gamedev-log-analyzer:logs
   41,233 lines · 7 errors · 312 warnings
   ERROR   [LogStreaming] Failed to load asset <addr>         (×128)   @ AssetManager.cpp:210
   WARNING [LogPhysics]   Penetration depth <n> exceeds limit (×4,051) @ MyComponent.cpp:88
@@ -60,16 +60,16 @@ This repo is a Claude Code **plugin marketplace** with two installable plugins t
 | Plugin | Does | Needs |
 | --- | --- | --- |
 | **rider-mcp-enforcer** (this page) | Force Rider's MCP symbol/reference/file search over Bash grep, token-capped | Rider running + MCP |
-| **[ue-log-analyzer](ue-log-analyzer/README.md)** | Parse/dedup/classify huge UE/Unity editor logs, search + extract scalars | Node only (no IDE) |
+| **[gamedev-log-analyzer](gamedev-log-analyzer/README.md)** | Parse/dedup/classify huge Unreal/Unity/Godot/MSVC-UBT-MSBuild logs (CLI-first), search + diff + locate + extract scalars | Node only (no IDE) |
 
-**One-step install** — `rider-mcp-enforcer` declares `ue-log-analyzer` as a dependency, so installing
+**One-step install** — `rider-mcp-enforcer` declares `gamedev-log-analyzer` as a dependency, so installing
 it pulls in both, and each server's `npm install` runs automatically on first session (no manual setup):
 ```bash
 /plugin marketplace add JSungMin/rider-mcp-enforcer
-/plugin install rider-mcp-enforcer@rider-mcp-enforcer   # also auto-installs ue-log-analyzer
+/plugin install rider-mcp-enforcer@rider-mcp-enforcer   # also auto-installs gamedev-log-analyzer
 /reload-plugins                                          # first run auto-installs deps for both
 ```
-Want only the log analyzer? Install it alone: `/plugin install ue-log-analyzer@rider-mcp-enforcer`.
+Want only the log analyzer? Install it alone: `/plugin install gamedev-log-analyzer@rider-mcp-enforcer`.
 
 ### Combined token savings (measured)
 | Task | Bash / raw | Plugin | Reduction |
@@ -81,7 +81,7 @@ Want only the log analyzer? Install it alone: `/plugin install ue-log-analyzer@r
 ### Using both together
 The log analyzer emits `file:line` for each entry; the Rider plugin turns a `file:line` into the
 actual symbol/source. A typical loop:
-1. `/ue-log-analyzer:logs` → find the error/warning and its `file:line`.
+1. `/gamedev-log-analyzer:logs` → find the error/warning and its `file:line`.
 2. Hand that location to rider-mcp-enforcer's `get_symbol_info` / `read_file` (or `search_symbol`) to
    open and understand the code — without ever grepping or dumping the raw log.
 
@@ -183,7 +183,7 @@ rider-mcp-enforcer — cumulative token savings (vs forwarding Rider's raw respo
 ## Install
 
 ```bash
-# 1) Add the marketplace and install (also auto-installs ue-log-analyzer)
+# 1) Add the marketplace and install (also auto-installs gamedev-log-analyzer)
 /plugin marketplace add JSungMin/rider-mcp-enforcer
 /plugin install rider-mcp-enforcer@rider-mcp-enforcer
 /reload-plugins        # first run auto-installs the server deps (no manual npm)
@@ -240,6 +240,12 @@ Check what's installed with `/plugin` (it lists each plugin's version). If a com
 > you want clients to pick up changes. Config keys/commands/tools must be updated in the same commit as
 > any source change; version history lives in [Releases](https://github.com/JSungMin/rider-mcp-enforcer/releases)
 > (auto-generated on each `v*` tag), not in this README.
+>
+> **Release/version sync:** the git tag equals the **headline plugin** version — every release bumps
+> `rider-mcp-enforcer` (plugin.json + marketplace.json) to `X.Y.Z` and tags `vX.Y.Z` (identical), so
+> `/plugin update rider-mcp-enforcer` always delivers the latest bundle. Because changes often land in
+> the bundled `gamedev-log-analyzer` (which keeps its own independent semver), the headline plugin must
+> still bump on those releases — otherwise clients see "already at latest" and never receive the update.
 
 ## Configuration (env)
 
