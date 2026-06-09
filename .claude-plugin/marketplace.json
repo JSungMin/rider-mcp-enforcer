@@ -1,4 +1,5 @@
 {
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "rider-mcp-enforcer",
   "description": "Token-efficient tooling for large Unreal C++/Unity/.NET projects: search the codebase through JetBrains Rider's index instead of grep, and analyze huge editor logs — both at ~99% fewer tokens.",
   "owner": {
@@ -9,13 +10,15 @@
     {
       "name": "rider-mcp-enforcer",
       "source": "./",
-      "version": "0.1.20",
+      "version": "0.1.21",
+      "category": "development",
       "description": "Force Claude Code to use Rider's MCP symbol/reference/file index instead of Bash grep, with token-flood summarization. Bundles gamedev-log-analyzer."
     },
     {
       "name": "gamedev-log-analyzer",
       "source": "./gamedev-log-analyzer",
-      "version": "0.3.2",
+      "version": "0.3.3",
+      "category": "development",
       "description": "Token-efficient game-engine & build log analysis (Unreal/Unity/Godot/MSVC-UBT-MSBuild), CLI-first: parse, dedup, classify, diff, locate, and decisive-field extraction. No IDE required."
     }
   ]

@@ -310,11 +310,25 @@ Claude Code에서 `rider-search` 서버가 실제 Rider 도구들(`search_symbol
 
 ## 상태 / 주의
 
-- **v0.1.x.** 도구 이름은 Rider 2025.2+ 기준. 빌드가 다른 이름을 쓰면 `rider-search` 도구 목록을
-  확인해 `RIDER_SUMMARIZE_TOOLS`를 설정하세요.
+- **Rider 2025.2.3에서 라이브 검증됨.** `search_text`·`search_symbol`이 실제 Unreal Engine 5
+  프로젝트에서 동작 확인됨 — [벤치마크](BENCHMARK.md) 수치는 이 도구들로 측정한 것. 도구 이름은
+  Rider 2025.2+ 기준이며, 빌드가 다른 이름을 쓰면 `rider-search` 도구 목록을 확인해
+  `RIDER_SUMMARIZE_TOOLS`를 설정하세요.
 - 요약기는 휴리스틱(`path:line` 형태 줄 유지). repo마다 `RIDER_MAX_RESULTS` 조정.
 - 트랜스포트는 SSE. 빌드가 stdio만 지원하면 이슈를 올려주세요 — stdio 클라이언트 모드를 추가할 수
   있습니다.
+
+## 권한 & 안전
+
+전부 **로컬**에서 동작하고 아무것도 업로드하지 않습니다:
+
+- **훅**(`PreToolUse` Bash)은 명령 문자열만 검사해 code-grep을 Rider로 리다이렉트할지 결정 — 파일
+  내용을 읽거나 무언가 실행하지 않음. `RIDER_ENFORCE=0` 존중.
+- **프록시**는 `localhost`의 Rider MCP SSE 엔드포인트에만 연결해 검색 응답을 전달·요약. 외부 인터넷
+  연결 없음, `~/.rider-mcp-enforcer/`에 설정 + 로컬 토큰절감 ledger만 기록.
+- **gamedev-log-analyzer**는 지정한 로컬 로그 파일을 읽어 요약만 출력.
+
+[SECURITY.md](SECURITY.md), [PRIVACY.md](PRIVACY.md) 참고.
 
 ## 버전 히스토리
 
