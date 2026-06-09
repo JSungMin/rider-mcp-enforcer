@@ -100,6 +100,37 @@ export function parseLine(line) {
     return { severity: sev, category: m[1], location: extractLoc(m[3] || ""), message: (m[3] || "").trim() };
   }
 
+  // Linker / toolchain diagnostic without a line number: "file : error LNK2019: msg" (MSVC/UBT/MSBuild).
+  // Live-verified shape for MSVC link errors; line-less, so no location.
+  m = line.match(/^\s*(.+?)\s*:\s*(error|warning|fatal error)\s+([A-Z]{1,4}\d+)\s*:\s*(.*)$/i);
+  if (m) {
+    return {
+      severity: /warning/i.test(m[2]) ? "Warning" : "Error",
+      category: "Build",
+      location: "",
+      message: `${m[3]}: ${m[4]}`.trim(),
+    };
+  }
+
+  // Godot (BEST-EFFORT — format from Godot's public docs/console output, NOT live-verified against real
+  // Godot project logs; the learnings ledger surfaces real-world misses). Distinctive headers, plus the
+  // standalone `at: func (file:line)` stack line Godot prints separately (so a header and its location
+  // parse as two entries). Bare ERROR:/WARNING: fall through to the generic branch below.
+  m = line.match(/^\s*(SCRIPT|SHADER|USER)\s+(ERROR|WARNING):\s*(.*)$/);
+  if (m) {
+    return {
+      severity: m[2] === "ERROR" ? "Error" : "Warning",
+      category: "Godot",
+      location: extractLoc(m[3] || ""),
+      message: `${m[1]} ${m[2]}: ${(m[3] || "").trim()}`,
+    };
+  }
+  m = line.match(/^\s*at:\s+\S/);
+  if (m) {
+    const loc = extractLoc(line);
+    if (loc) return { severity: "Display", category: "Godot", location: loc, message: line.trim() };
+  }
+
   // Unity / generic: detect a severity keyword + optional location.
   // "exception"/"fatal" matched as substrings so glued names (NullReferenceException) count.
   let sev = null;

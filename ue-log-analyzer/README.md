@@ -27,9 +27,8 @@ scalar columns that decide the answer.
 
 ## What it does
 
-- **Parses** each line into `{severity, category, file:line, message}` — Unreal runtime
-  (`[..]LogCat: Warning: msg`), build/compile errors (`path(line): error C####: msg`), Unity
-  (`… (at Assets/X.cs:42)`), and a generic fallback (severity keyword + location).
+- **Parses** each line into `{severity, category, file:line, message}` across several engines (see the
+  support matrix below), with a generic severity-keyword fallback for anything unrecognized.
 - **Template dedup:** numbers/addresses/GUIDs/paths/instance-ids are normalized so repeated spam
   collapses into one group with a `×count` and representative locations.
 - **Search/filter:** by `severityMin`, `category`, `file`, `query`; `groupBy: "callsite"` rolls
@@ -39,6 +38,24 @@ scalar columns that decide the answer.
 - **`log_diff`:** compare two logs (before/after) and emit **only the delta** — new errors, errors that
   disappeared, and groups whose count changed. Unchanged groups are omitted, so a regression-triage diff
   across runs costs a fraction of re-reading either log.
+
+## Supported log formats
+
+| Source | Example line | Category | Verification |
+| --- | --- | --- | --- |
+| **Unreal runtime** | `[..][f]LogTemp: Error: msg` | the `Log*` category | ✅ live-verified (18–57 MB real logs) |
+| **MSVC / UBT / MSBuild compile** | `Foo.cpp(120): error C2065: msg` | `Build` | ✅ live-verified |
+| **MSVC / UBT linker** | `Foo.obj : error LNK2019: msg` | `Build` | ✅ live-verified |
+| **Unity C# compile** | `Assets/X.cs(12,34): error CS1002: msg` | `Build` | ✅ verified (shares the compile path) |
+| **Unity runtime / stack** | `NullReferenceException …`, `(at Assets/X.cs:42)` | generic + location | ⚠️ best-effort — **not** verified against real Unity logs |
+| **Godot** | `SCRIPT ERROR: …`, `at: f (res://x.gd:42)` | `Godot` | ⚠️ best-effort — **not** verified against real Godot logs |
+| **Anything else** | severity keyword (`error`/`warning`/`exception`/…) | generic + location | partial fallback |
+
+> ⚠️ **Unity-deep and Godot parsing are best-effort from each engine's public docs/console output — they
+> have NOT been verified against real Unity/Godot project logs yet.** Unrecognized lines still get the
+> generic fallback, and the local **learnings ledger** (`ue-log learnings`) reports templated shapes of
+> unparsed lines so real-world gaps surface as concrete parser candidates. Real Unity/Godot log samples
+> (sanitized) are very welcome — please open an issue.
 
 ## How Claude uses it (CLI by default)
 Claude reaches the analyzer through a **skill** that shells out to the `ue-log` CLI — there is **no

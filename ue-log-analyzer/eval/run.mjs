@@ -74,6 +74,22 @@ const engineOut = analyzeLog(log, { severityMin: "Warning", groupBy: "callsite" 
 const coreOk = !viaCore.isError && viaCore.text.endsWith(engineOut);
 try { fs.unlinkSync(tmp); } catch { /* ignore */ }
 
+// Multi-engine classification — SYNTHETIC samples from each engine's documented format. UE + MSVC build
+// are live-verified; Unity-deep + Godot are BEST-EFFORT (format from public docs, NOT verified against
+// real Unity/Godot logs). This guards the documented shapes only, not real-world coverage.
+const engineCases = [
+  { line: "Assets/Game/Foo.cs(12,34): error CS1002: ; expected", sev: "Error", cat: "Build" }, // Unity C# compile
+  { line: "MyLib.obj : error LNK2019: unresolved external symbol", sev: "Error", cat: "Build" }, // MSVC linker
+  { line: "SCRIPT ERROR: Invalid call in base 'Node'.", sev: "Error", cat: "Godot" }, // Godot ⚠️ unverified
+  { line: "USER WARNING: deprecated API used", sev: "Warning", cat: "Godot" }, // Godot ⚠️ unverified
+  { line: "   at: Player._process (res://player.gd:42)", sev: "Display", cat: "Godot", loc: "res://player.gd:42" },
+  { line: "NullReferenceException: Object reference not set", sev: "Error" }, // Unity runtime (generic)
+];
+const engineOk = engineCases.every((c) => {
+  const e = parseLine(c.line);
+  return e && e.severity === c.sev && (!c.cat || e.category === c.cat) && (!c.loc || e.location === c.loc);
+});
+
 const rows = [
   ["parse coverage", (coverage * 100).toFixed(1) + "%", "≥ 95%", coverage >= 0.95],
   ["token reduction (callsite)", (reduction * 100).toFixed(1) + "%", "≥ 90%", reduction >= 0.9],
@@ -86,6 +102,7 @@ const rows = [
   ["log_locate tokens (jump list)", locateTok, "≤ 150", locateTok <= 150],
   ["log_locate has file:line", locateHasLoc, "true", locateHasLoc],
   ["log_locate omits bodies", locateNoBodies, "true", locateNoBodies],
+  ["multi-engine classify (synthetic)", engineOk, "true", engineOk],
 ];
 
 console.log(`ue-log-analyzer eval — ${N} synthetic (sanitized) lines\n`);
