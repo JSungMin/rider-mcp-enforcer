@@ -490,6 +490,10 @@ async function main() {
     // Inject a default project when the caller omits it (Rider errors when multiple
     // projects are open and projectPath is missing).
     if (PROJECT_PATH && args.projectPath == null) args.projectPath = PROJECT_PATH;
+    // Normalize Windows backslashes to forward slashes: Rider builds a file:// URI from
+    // projectPath, and a backslash path (e.g. D:\Project\fb) throws "Illegal character in
+    // authority" — every search then fails. Forward slashes resolve correctly on all platforms.
+    if (typeof args.projectPath === "string") args.projectPath = args.projectPath.replace(/\\/g, "/");
     let result;
     try {
       result = await rider.callTool({ name, arguments: args });

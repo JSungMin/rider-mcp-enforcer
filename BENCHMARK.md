@@ -1,13 +1,42 @@
 # Benchmark: Rider MCP (this plugin) vs Bash grep
 
-Real measurement on a live setup. Query: a single project class name (call it `<Symbol>`) that has
-**~2,400 textual occurrences** in a large Unreal Engine 5 codebase open in Rider 2025.2 (MCP SSE on a
-local port). Machine: Windows 11, Node 24, ripgrep. Token estimate = UTF-8 bytes ÷ 4 (approximate).
+Benchmarks here are **A/B by default**: the same query run **without the plugin** (Arm A — raw
+ripgrep, i.e. what the model receives from a `grep`) versus **with the plugin** (Arm B — Rider MCP,
+summarized and token-capped). Measured live against a real Unreal Engine 5 project open in Rider
+2025.2 (MCP SSE on a local port). Machine: Windows, Node 24, ripgrep 14. Token estimate = UTF-8
+bytes ÷ 4 (approximate).
 
-> No source code, file paths, or symbol names from the measured project are reproduced here — only
-> aggregate counts, sizes, and timings.
+> No source code, file paths, or project symbol names are reproduced here — only aggregate counts,
+> sizes, and timings. The queries below are **public Unreal Engine framework symbols** (`AActor`,
+> `UObject`, …), not symbols from the measured project.
 
-## Results
+## A/B across several queries (the representative case)
+
+Four framework symbols, `limit=200`, cap 50, median of 2 runs. Arm A is `rg` over the whole project;
+"capped@250" is what Claude Code's built-in Grep tool would actually deliver (it truncates at ≈250
+lines). Arm B is `search_text` through the proxy (raw Rider JSON → summarized `file:line  code`).
+
+| Query | A · grep whole (lines / ~tok) | A · grep capped@250 (~tok) | B · Rider summarized (items / ~tok) | B · raw (~tok) | Tokens saved (whole / capped) |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `AActor` | 147 / 5,301 | 5,301 | 151 / **1,460** | 9,507 | 72% / 72% |
+| `UObject` | 699 / 30,598 | 12,620 | 200 / **1,790** | 14,932 | **94%** / 86% |
+| `BeginPlay` | 135 / 3,877 | 3,877 | 135 / **988** | 7,430 | 75% / 75% |
+| `Tick` | 226 / 8,614 | 8,614 | 200 / **1,193** | 12,451 | 86% / 86% |
+
+**Aggregate (median): ~80% fewer tokens** vs whole-project grep, **~80%** vs capped grep. Two effects
+compound: **summarization** of the raw Rider JSON (e.g. `UObject` 14,932 → 1,790 ≈ 88%; `Tick`
+12,451 → 1,193 ≈ 90%) and **capping** the long tail. Savings scale with match frequency — the more a
+symbol occurs, the more grep dumps and the more the plugin saves (see the extreme case below).
+
+Reproduce with the bundled harness (counts only, never content):
+
+```bash
+# from proxy/
+RIDER_MCP_SSE_URL="http://127.0.0.1:<port>/sse" RIDER_PROJECT_PATH="D:/Path/To/Project" \
+  Q="AActor,UObject,BeginPlay,Tick" NARROW="Source" node bench-ab.mjs
+```
+
+## High-frequency single symbol (extreme case)
 
 | Path | Wall time | Results delivered to the model | Tokens (~) |
 | --- | ---: | --- | ---: |
