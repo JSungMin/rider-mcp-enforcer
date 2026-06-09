@@ -41,9 +41,11 @@ Unity `Editor.log`는 보통 수십 MB의 반복 스팸이라 `cat`/`grep`하면
 ```bash
 /plugin marketplace add JSungMin/rider-mcp-enforcer
 /plugin install ue-log-analyzer@rider-mcp-enforcer
-cd <플러그인경로>/server && npm install      # 최초 1회
+/reload-plugins                               # 첫 실행 시 의존성 자동 설치 (수동 npm 불필요)
 /ue-log-analyzer:logs                         # 또는 "에디터 로그 확인해줘"
 ```
+(`rider-mcp-enforcer`를 설치하면 이것도 자동으로 함께 설치됩니다 —
+[마켓플레이스](../README.ko.md#마켓플레이스--2개-플러그인) 참고.)
 
 ## 설정
 설정은 `~/.ue-log-analyzer/config.json` (우선순위: env > config > 기본값). `/ue-log-analyzer:logs`
@@ -63,6 +65,8 @@ cd <플러그인경로>/server && npm install      # 최초 1회
 쓰기](../README.ko.md#두-플러그인-함께-쓰기) 참고.
 
 ## Changelog
+- **0.1.1** — 서버 의존성을 세션 시작 시 자동 설치(`${CLAUDE_PLUGIN_DATA}` + 동적 SDK 해석) — 수동
+  `npm install` 불필요.
 - **0.1.0** — 최초: `log_detect`/`log_search`/`log_summary`/`log_fields`/`log_tail` +
   `/ue-log-analyzer:logs`. UE/Unity/범용 파싱, 템플릿 dedup, 콜사이트 롤업, 필드 추출.
 

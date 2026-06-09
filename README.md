@@ -19,12 +19,14 @@ This repo is a Claude Code **plugin marketplace** with two installable plugins t
 | **rider-mcp-enforcer** (this page) | Force Rider's MCP symbol/reference/file search over Bash grep, token-capped | Rider running + MCP |
 | **[ue-log-analyzer](ue-log-analyzer/README.md)** | Parse/dedup/classify huge UE/Unity editor logs, search + extract scalars | Node only (no IDE) |
 
-Install one or both:
+**One-step install** — `rider-mcp-enforcer` declares `ue-log-analyzer` as a dependency, so installing
+it pulls in both, and each server's `npm install` runs automatically on first session (no manual setup):
 ```bash
 /plugin marketplace add JSungMin/rider-mcp-enforcer
-/plugin install rider-mcp-enforcer@rider-mcp-enforcer   # code search
-/plugin install ue-log-analyzer@rider-mcp-enforcer      # log analysis
+/plugin install rider-mcp-enforcer@rider-mcp-enforcer   # also auto-installs ue-log-analyzer
+/reload-plugins                                          # first run auto-installs deps for both
 ```
+Want only the log analyzer? Install it alone: `/plugin install ue-log-analyzer@rider-mcp-enforcer`.
 
 ### Combined token savings (measured)
 | Task | Bash / raw | Plugin | Reduction |
@@ -138,21 +140,19 @@ rider-mcp-enforcer — cumulative token savings (vs forwarding Rider's raw respo
 ## Install
 
 ```bash
-# 1) Add this repo as a Claude Code plugin marketplace and install
+# 1) Add the marketplace and install (also auto-installs ue-log-analyzer)
 /plugin marketplace add JSungMin/rider-mcp-enforcer
 /plugin install rider-mcp-enforcer@rider-mcp-enforcer
+/reload-plugins        # first run auto-installs the server deps (no manual npm)
 
-# 2) Install the proxy's dependencies (one time)
-cd <plugin-dir>/proxy && npm install
-#   <plugin-dir> is where Claude Code cloned the plugin; see /plugin for the path.
-
-# 3) Configure it — from inside Claude Code, just run:
+# 2) Configure it — from inside Claude Code, just run:
 /rider-mcp-enforcer:setup
 #   It detects Rider's SSE endpoint, asks for the project path, and writes the config.
 ```
 
-Then run `/reload-plugins` (or restart). Verify the `rider-search` MCP server and its tools appear,
-and that a `grep src/**/*.cpp` is blocked with a redirect message.
+Verify the `rider-search` MCP server and its tools appear, and that a `grep src/**/*.cpp` is blocked
+with a redirect message. (The `npm install` for each plugin's MCP server runs automatically on
+session start via a hook into `${CLAUDE_PLUGIN_DATA}`.)
 
 ## Setup / configuration command
 
@@ -186,10 +186,7 @@ version of this plugin:
 /plugin update rider-mcp-enforcer
 #   fallback: /plugin uninstall rider-mcp-enforcer  then  /plugin install rider-mcp-enforcer@rider-mcp-enforcer
 
-# 3) If the proxy's dependencies changed, reinstall them
-cd <plugin-dir>/proxy && npm install
-
-# 4) Reload so the new hook/command/MCP server take effect
+# 3) Reload so the new hook/command/MCP server take effect (deps auto-reinstall on session start)
 /reload-plugins        # or restart Claude Code
 ```
 
@@ -277,6 +274,9 @@ Rider — MCP is off or the URL is wrong.
 
 ## Changelog
 
+- **0.1.9** — one-step install: declares `ue-log-analyzer` as a dependency (one `/plugin install` gets
+  both), and the proxy's `npm install` runs automatically on session start (`${CLAUDE_PLUGIN_DATA}` +
+  dynamic SDK resolution) — no manual `npm install`.
 - **0.1.8** — hook fix: only block when a search tool is the **actual command** of a segment (no more
   false positives on `node setup.mjs`, `cd`, or paths/args containing `plugins`/`source`/`rg`);
   Korean README ([README.ko.md](README.ko.md)).

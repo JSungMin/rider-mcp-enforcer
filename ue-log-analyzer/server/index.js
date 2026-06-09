@@ -7,9 +7,7 @@
  *
  * Pure file parsing. Settings: env var > ~/.ue-log-analyzer/config.json > default.
  */
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import { Server, StdioServerTransport, ListToolsRequestSchema, CallToolRequestSchema } from "./sdk.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
