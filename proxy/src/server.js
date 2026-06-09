@@ -29,41 +29,51 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const RIDER_URL = process.env.RIDER_MCP_SSE_URL || "";
-const MAX_RESULTS = parseInt(process.env.RIDER_MAX_RESULTS || "50", 10) || 50;
-// Default project for Rider tools when multiple projects are open and the caller
-// omits projectPath (Rider errors out otherwise). Optional.
-const PROJECT_PATH = process.env.RIDER_PROJECT_PATH || "";
-// On truncation, auto-retry once with a bigger limit to learn the true count, then
-// loudly flag incompleteness so Claude asks the user instead of coding on a partial set.
-const ESCALATE = !["0", "false", "off"].includes(
-  String(process.env.RIDER_ESCALATE ?? "1").toLowerCase()
-);
-const ESCALATE_LIMIT = parseInt(process.env.RIDER_ESCALATE_LIMIT || "500", 10) || 500;
-// Cap each result's code snippet so one giant line (e.g. a long generated build-file line)
-// cannot blow the token budget.
-const MAX_LINE_CHARS = parseInt(process.env.RIDER_MAX_LINE_CHARS || "200", 10) || 200;
-// Drop build-artifact / generated paths from search results by default (they are noise
-// and bloat tokens). Case-insensitive substring match on the forward-slashed path.
-const EXCLUDE_OFF = ["1", "true", "on"].includes(
-  String(process.env.RIDER_EXCLUDE_OFF ?? "").toLowerCase()
-);
-const EXCLUDE = (
-  process.env.RIDER_EXCLUDE ||
-  "/intermediate/,/binaries/,/build/,/saved/,/deriveddatacache/,/.vs/,/.idea/,/node_modules/,.vcxproj,.sln,.filters"
+// Settings come from (highest precedence first): environment variable > config file
+// (~/.rider-mcp-enforcer/config.json, written by the setup command) > built-in default.
+const CONFIG_DIR = path.join(os.homedir(), ".rider-mcp-enforcer");
+const CONFIG_FILE = process.env.RIDER_CONFIG_FILE || path.join(CONFIG_DIR, "config.json");
+let fileCfg = {};
+try {
+  fileCfg = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8")) || {};
+} catch {
+  /* no config file yet — env + defaults */
+}
+function cfg(envName, key, def) {
+  const e = process.env[envName];
+  if (e !== undefined && e !== "") return e;
+  const v = fileCfg[key];
+  if (v !== undefined && v !== null && v !== "") return v;
+  return def;
+}
+const isOff = (v) => ["0", "false", "off"].includes(String(v).toLowerCase());
+const isOn = (v) => ["1", "true", "on"].includes(String(v).toLowerCase());
+
+const RIDER_URL = cfg("RIDER_MCP_SSE_URL", "riderSseUrl", "");
+const MAX_RESULTS = parseInt(cfg("RIDER_MAX_RESULTS", "maxResults", "50"), 10) || 50;
+const PROJECT_PATH = cfg("RIDER_PROJECT_PATH", "projectPath", "");
+const ESCALATE = !isOff(cfg("RIDER_ESCALATE", "escalate", "1"));
+const ESCALATE_LIMIT = parseInt(cfg("RIDER_ESCALATE_LIMIT", "escalateLimit", "500"), 10) || 500;
+const MAX_LINE_CHARS = parseInt(cfg("RIDER_MAX_LINE_CHARS", "maxLineChars", "200"), 10) || 200;
+const EXCLUDE_OFF = isOn(cfg("RIDER_EXCLUDE_OFF", "excludeOff", ""));
+const EXCLUDE = String(
+  cfg(
+    "RIDER_EXCLUDE",
+    "exclude",
+    "/intermediate/,/binaries/,/build/,/saved/,/deriveddatacache/,/.vs/,/.idea/,/node_modules/,.vcxproj,.sln,.filters"
+  )
 )
   .split(",")
   .map((s) => s.trim().toLowerCase())
   .filter(Boolean);
-// Cumulative token-savings ledger (tokens saved vs. forwarding Rider's raw response).
-const STATS_FILE =
-  process.env.RIDER_STATS_FILE ||
-  path.join(os.homedir(), ".rider-mcp-enforcer", "stats.json");
-// Real Rider MCP (2025.2+) search/symbol tools whose JSON responses we compact.
+const STATS_FILE = cfg("RIDER_STATS_FILE", "statsFile", path.join(CONFIG_DIR, "stats.json"));
 const SUMMARIZE = new Set(
-  (
-    process.env.RIDER_SUMMARIZE_TOOLS ||
-    "search_symbol,search_file,search_text,search_regex,search_in_files_by_text,search_in_files_by_regex,find_files_by_name_keyword,find_files_by_glob"
+  String(
+    cfg(
+      "RIDER_SUMMARIZE_TOOLS",
+      "summarizeTools",
+      "search_symbol,search_file,search_text,search_regex,search_in_files_by_text,search_in_files_by_regex,find_files_by_name_keyword,find_files_by_glob"
+    )
   )
     .split(",")
     .map((s) => s.trim())
@@ -71,6 +81,64 @@ const SUMMARIZE = new Set(
 );
 
 const log = (...a) => console.error("[rider-search-proxy]", ...a);
+
+// ---- setup / config (written by the setup command, read at proxy startup) ----
+const CONFIG_KEYS = [
+  "riderSseUrl", "projectPath", "maxResults", "escalate", "escalateLimit",
+  "maxLineChars", "exclude", "excludeOff", "summarizeTools", "statsFile",
+];
+function readConfigFile() {
+  try {
+    return JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8")) || {};
+  } catch {
+    return {};
+  }
+}
+function applySetup(args) {
+  const current = readConfigFile();
+  const changed = [];
+  for (const k of CONFIG_KEYS) {
+    if (args[k] !== undefined) {
+      current[k] = args[k];
+      changed.push(k);
+    }
+  }
+  fs.mkdirSync(path.dirname(CONFIG_FILE), { recursive: true });
+  fs.writeFileSync(CONFIG_FILE, JSON.stringify(current, null, 2));
+  return { current, changed };
+}
+function effectiveConfig() {
+  return {
+    riderSseUrl: RIDER_URL || "(unset)",
+    projectPath: PROJECT_PATH || "(unset)",
+    maxResults: MAX_RESULTS,
+    escalate: ESCALATE,
+    escalateLimit: ESCALATE_LIMIT,
+    maxLineChars: MAX_LINE_CHARS,
+    excludeOff: EXCLUDE_OFF,
+    exclude: EXCLUDE,
+    statsFile: STATS_FILE,
+  };
+}
+async function detectRiderUrl() {
+  const candidates = [
+    "http://127.0.0.1:64342/sse",
+    "http://127.0.0.1:63342/sse",
+  ];
+  const found = [];
+  for (const url of candidates) {
+    try {
+      const ac = new AbortController();
+      const to = setTimeout(() => ac.abort(), 1500);
+      const res = await fetch(url, { signal: ac.signal });
+      clearTimeout(to);
+      if (res.status >= 200 && res.status < 400) found.push(url);
+    } catch {
+      /* not listening */
+    }
+  }
+  return found;
+}
 
 async function connectRider() {
   if (!RIDER_URL) {
@@ -254,6 +322,37 @@ async function main() {
 
   const SAVINGS_TOOLS = [
     {
+      name: "rider_setup",
+      description:
+        "Configure this plugin's settings (writes ~/.rider-mcp-enforcer/config.json; read at proxy " +
+        "startup, so run /reload-plugins after). Pass only the keys to change. Use for the setup command.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          riderSseUrl: { type: "string", description: "Rider MCP SSE URL (Copy SSE Config)" },
+          projectPath: { type: "string", description: "Default project root for searches" },
+          maxResults: { type: "number", description: "Max lines shown per result (default 50)" },
+          escalate: { type: "boolean", description: "Auto-raise limit once on truncation (default true)" },
+          escalateLimit: { type: "number", description: "Limit used on auto-escalation (default 500)" },
+          maxLineChars: { type: "number", description: "Max chars per snippet (default 200)" },
+          exclude: { type: "string", description: "Comma list of path substrings to drop (build artifacts)" },
+          excludeOff: { type: "boolean", description: "Keep excluded paths in results" },
+          summarizeTools: { type: "string", description: "Comma list of Rider tool names to summarize" },
+          statsFile: { type: "string", description: "Path for the savings ledger" },
+        },
+      },
+    },
+    {
+      name: "rider_config",
+      description: "Show the plugin's current effective settings and the config-file path.",
+      inputSchema: { type: "object", properties: {} },
+    },
+    {
+      name: "rider_detect",
+      description: "Probe localhost for a running Rider MCP SSE endpoint and suggest riderSseUrl.",
+      inputSchema: { type: "object", properties: {} },
+    },
+    {
       name: "rider_savings",
       description:
         "Report cumulative tokens this plugin saved (vs forwarding Rider's raw responses) " +
@@ -299,6 +398,52 @@ async function main() {
 
   server.setRequestHandler(CallToolRequestSchema, async (req) => {
     // Synthetic local tools (work even when Rider is disconnected).
+    if (req.params.name === "rider_setup") {
+      const { current, changed } = applySetup(req.params.arguments || {});
+      return {
+        content: [
+          {
+            type: "text",
+            text:
+              (changed.length
+                ? `Updated ${changed.join(", ")}.`
+                : "No recognized keys provided; nothing changed.") +
+              `\nConfig written to ${CONFIG_FILE}:\n${JSON.stringify(current, null, 2)}\n\n` +
+              `Run /reload-plugins (or restart Claude Code) to apply — settings are read at proxy startup.`,
+          },
+        ],
+      };
+    }
+    if (req.params.name === "rider_config") {
+      return {
+        content: [
+          {
+            type: "text",
+            text:
+              `Effective settings (env > config file > default):\n` +
+              JSON.stringify(effectiveConfig(), null, 2) +
+              `\n\nConfig file: ${CONFIG_FILE}`,
+          },
+        ],
+      };
+    }
+    if (req.params.name === "rider_detect") {
+      const found = await detectRiderUrl();
+      return {
+        content: [
+          {
+            type: "text",
+            text: found.length
+              ? `Found Rider MCP SSE at:\n${found.map((u) => "  " + u).join("\n")}\n` +
+                `Set it with rider_setup { "riderSseUrl": "${found[0]}" }, then /reload-plugins.\n` +
+                `(Verify in Rider: Settings | Tools | MCP Server → Copy SSE Config — the port is per-instance.)`
+              : `No Rider MCP SSE endpoint responded on the common ports (63342/64342). ` +
+                `Enable it in Rider (Settings | Tools | MCP Server → Enable), then use Copy SSE Config ` +
+                `and set riderSseUrl via rider_setup.`,
+          },
+        ],
+      };
+    }
     if (req.params.name === "rider_savings") {
       return { content: [{ type: "text", text: savingsReport() }] };
     }

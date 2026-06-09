@@ -107,14 +107,32 @@ rider-mcp-enforcer — cumulative token savings (vs forwarding Rider's raw respo
 cd <plugin-dir>/proxy && npm install
 #   <plugin-dir> is where Claude Code cloned the plugin; see /plugin for the path.
 
-# 3) Point the proxy at Rider's MCP SSE URL (from "Copy SSE Config")
-#    e.g. export it in your shell / environment before launching Claude Code:
-export RIDER_MCP_SSE_URL="http://localhost:<port>/sse"     # macOS/Linux
-$env:RIDER_MCP_SSE_URL = "http://localhost:<port>/sse"     # PowerShell
+# 3) Configure it — from inside Claude Code, just run:
+/rider-mcp-enforcer:setup
+#   It detects Rider's SSE endpoint, asks for the project path, and writes the config.
 ```
 
-Restart Claude Code (or `/reload-plugins`). Verify the `rider-search` MCP server and its tools
-appear, and that a `grep src/**/*.cpp` is blocked with a redirect message.
+Then run `/reload-plugins` (or restart). Verify the `rider-search` MCP server and its tools appear,
+and that a `grep src/**/*.cpp` is blocked with a redirect message.
+
+## Setup / configuration command
+
+You don't edit OS environment variables. Settings live in a config file
+(`~/.rider-mcp-enforcer/config.json`) the proxy reads at startup. Configure it any of these ways:
+
+- **In Claude Code (recommended):** `/rider-mcp-enforcer:setup` — guided: it runs `rider_detect`,
+  asks for `projectPath`, and applies via the `rider_setup` tool. Then `/reload-plugins`.
+- **Ad-hoc via tools:** ask Claude to call `rider_setup { "riderSseUrl": "...", "projectPath": "..." }`,
+  `rider_config` (show current), or `rider_detect` (probe the port).
+- **From a shell:**
+  ```bash
+  node <plugin-dir>/proxy/setup.mjs --detect
+  node <plugin-dir>/proxy/setup.mjs riderSseUrl=http://127.0.0.1:<port>/sse projectPath="G:/Path/To/Project"
+  node <plugin-dir>/proxy/setup.mjs --show
+  ```
+
+Settings are read at proxy startup → **run `/reload-plugins` after changing them**. Precedence:
+**environment variable > config file > built-in default** (so a same-named env var still wins).
 
 ## Configuration (env)
 
