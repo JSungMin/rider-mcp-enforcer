@@ -10,14 +10,14 @@
     {
       "name": "rider-mcp-enforcer",
       "source": "./",
-      "version": "0.1.23",
+      "version": "0.1.24",
       "category": "development",
       "description": "Force Claude Code to use Rider's MCP symbol/reference/file index instead of Bash grep, with token-flood summarization. Bundles gamedev-log-analyzer."
     },
     {
       "name": "gamedev-log-analyzer",
       "source": "./gamedev-log-analyzer",
-      "version": "0.5.0",
+      "version": "0.5.1",
       "category": "development",
       "description": "Token-efficient game-engine & build log analysis (Unreal/Unity/Godot/MSVC-UBT-MSBuild), CLI-first: parse, dedup, classify, diff, locate, and decisive-field extraction. No IDE required."
     }

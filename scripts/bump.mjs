@@ -8,6 +8,11 @@
 //   --dry-run print what would change, write nothing
 //   --tag     after writing, create the annotated git tag(s) (rider -> vX.Y.Z, gamedev -> gamedev-vX.Y.Z)
 //
+// NOTE on npm: you do NOT need the `gamedev-v*` tag to publish to npm anymore. The npm-publish workflow
+// triggers on ANY release tag `v*` and is idempotent (skips if the package version is already on npm),
+// so pushing the `v<rider>` release tag auto-publishes gamedev-log-analyzer whenever its version changed.
+// The `gamedev-v*` tag remains available for an explicit npm-only republish.
+//
 // Targets (edited in place, formatting preserved via a scoped regex replace):
 //   rider   -> .claude-plugin/plugin.json, .claude-plugin/marketplace.json (rider entry)
 //   gamedev -> gamedev-log-analyzer/.claude-plugin/plugin.json,
@@ -109,6 +114,9 @@ if (TAG) {
   }
   console.log("\nPush tags with: git push origin " + tagsToMake.map((t) => t.tag).join(" "));
 } else {
-  console.log("\nNext: commit the bump, then tag a release, e.g.:");
-  for (const { tag } of tagsToMake) console.log(`  git tag -a ${tag} -m "..." && git push origin ${tag}`);
+  const riderTag = tagsToMake.find((t) => t.plugin === "rider");
+  console.log("\nNext: commit the bump (PR + merge to main), then push the release tag on main:");
+  console.log(`  git tag -a ${(riderTag || tagsToMake[0]).tag} -m "..." && git push origin ${(riderTag || tagsToMake[0]).tag}`);
+  console.log("That `v*` tag publishes the GitHub Release AND (idempotently) the gamedev npm package.");
+  console.log("Only push a gamedev-v* tag for an explicit npm-only republish.");
 }

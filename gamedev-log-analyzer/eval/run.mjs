@@ -6,7 +6,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { analyzeLog, extractFields, parseLine, diffLogs, locateLog } from "../server/logs.js";
+import { analyzeLog, extractFields, parseLine, diffLogs, locateLog, readText } from "../server/logs.js";
 import { runTool } from "../server/core.js";
 
 // Deterministic synthetic UE-style log (generic names only).
@@ -82,6 +82,17 @@ const hintOnUnknown = /Only \d+% of lines parsed/.test(runTool("log_summary", { 
 try { fs.unlinkSync(junkPath); } catch { /* ignore */ }
 const covHintOk = hintOnUnknown && !/Only \d+% of lines parsed/.test(viaCore.text); // supported log → no hint
 
+// tail-read (huge logs): reading the last N bytes starts mid-file, so the leading partial line must be
+// dropped — parsing has to begin on a clean line boundary, never on a fragment.
+const tailLines = Array.from({ length: 500 }, (_, i) => `LINE${String(i).padStart(4, "0")}: padding content xxxxxxxx`);
+const tailText = tailLines.join("\n");
+const tailPath = path.join(os.tmpdir(), "gamedev-log-eval-tail.log");
+fs.writeFileSync(tailPath, tailText);
+const tailed = readText(tailPath, Math.floor(Buffer.byteLength(tailText) / 2) + 7); // cut lands mid-line
+try { fs.unlinkSync(tailPath); } catch { /* ignore */ }
+const firstReal = tailed.split("\n")[1] || ""; // line[0] is the "…truncated…" marker
+const tailOk = /^LINE\d{4}: /.test(firstReal); // a COMPLETE line, not a fragment
+
 // Multi-engine classification — SYNTHETIC samples from each engine's documented format. UE + MSVC build
 // are live-verified; Unity-deep + Godot are BEST-EFFORT (format from public docs, NOT verified against
 // real Unity/Godot logs). This guards the documented shapes only, not real-world coverage.
@@ -130,6 +141,7 @@ const rows = [
   ["multi-engine classify (synthetic)", engineOk, "true", engineOk],
   ["JSONL field extraction", jsonlOk, "true", jsonlOk],
   ["coverage hint (unknown fmt only)", covHintOk, "true", covHintOk],
+  ["tail-read clean line boundary", tailOk, "true", tailOk],
 ];
 
 console.log(`gamedev-log-analyzer eval — ${N} synthetic (sanitized) lines\n`);
