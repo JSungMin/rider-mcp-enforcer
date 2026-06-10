@@ -84,11 +84,28 @@ const engineCases = [
   { line: "USER WARNING: deprecated API used", sev: "Warning", cat: "Godot" }, // Godot ⚠️ unverified
   { line: "   at: Player._process (res://player.gd:42)", sev: "Display", cat: "Godot", loc: "res://player.gd:42" },
   { line: "NullReferenceException: Object reference not set", sev: "Error" }, // Unity runtime (generic)
+  // JSONL — live-verified against a real UE AIMovementDebug .jsonl (severity from verbosity, category
+  // from stage, message from message). bunyan/pino/serilog key aliases handled too.
+  { line: '{"ts":17750181.6,"verbosity":"Log","stage":"ServerCMCPos","message":"[AISyncBlend] Pawn=X Vel=0"}', sev: "Display", cat: "ServerCMCPos" },
+  { line: '{"level":"error","logger":"net","msg":"connection refused"}', sev: "Error", cat: "net" }, // bunyan/pino
+  { line: '{"@l":"Warning","SourceContext":"App.Db","message":"slow query"}', sev: "Warning", cat: "App.Db" }, // serilog
+  // Common text formats — BEST-EFFORT (not verified against a specific app's real logs).
+  { line: "2024-01-02 03:04:05,123 - app.worker - ERROR - task failed", sev: "Error", cat: "app.worker" }, // python logging
+  { line: "[WARN] disk almost full", sev: "Warning", cat: "Log" }, // bracketed level
 ];
 const engineOk = engineCases.every((c) => {
   const e = parseLine(c.line);
   return e && e.severity === c.sev && (!c.cat || e.category === c.cat) && (!c.loc || e.location === c.loc);
 });
+
+// JSONL field extraction — the JSON `Actor=(x,y,z)` inside `message` + top-level `ts` must resolve so
+// `log_fields` works on JSONL trace logs (live-verified on a real UE movement log).
+const jsonlLog = [
+  '{"ts":100.0,"verbosity":"Log","stage":"Pos","message":"Pawn=A Actor=(10.0, 20.0, 5.0) Vel=400"}',
+  '{"ts":100.1,"verbosity":"Log","stage":"Pos","message":"Pawn=A Actor=(13.0, 24.0, 5.0) Vel=410"}',
+].join("\n");
+const jsonlOut = extractFields(jsonlLog, { fields: ["ts", "Actor.x", "Vel", "step:Actor"], category: "Pos", severityMin: "Display", max: 10 });
+const jsonlOk = /(^|\n)100\t10\.0\t400\t/.test(jsonlOut) && /\t5\.00$/.test(jsonlOut); // step = hypot(3,4)=5.00
 
 const rows = [
   ["parse coverage", (coverage * 100).toFixed(1) + "%", "≥ 95%", coverage >= 0.95],
@@ -103,6 +120,7 @@ const rows = [
   ["log_locate has file:line", locateHasLoc, "true", locateHasLoc],
   ["log_locate omits bodies", locateNoBodies, "true", locateNoBodies],
   ["multi-engine classify (synthetic)", engineOk, "true", engineOk],
+  ["JSONL field extraction", jsonlOk, "true", jsonlOk],
 ];
 
 console.log(`gamedev-log-analyzer eval — ${N} synthetic (sanitized) lines\n`);

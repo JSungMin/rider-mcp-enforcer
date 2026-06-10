@@ -49,7 +49,15 @@ scalar columns that decide the answer.
 | **Unity C# compile** | `Assets/X.cs(12,34): error CS1002: msg` | `Build` | ✅ verified (shares the compile path) |
 | **Unity runtime / stack** | `NullReferenceException …`, `(at Assets/X.cs:42)` | generic + location | ⚠️ best-effort — **not** verified against real Unity logs |
 | **Godot** | `SCRIPT ERROR: …`, `at: f (res://x.gd:42)` | `Godot` | ⚠️ best-effort — **not** verified against real Godot logs |
+| **JSONL** (UE structured / bunyan / pino / Serilog) | `{"ts":..,"verbosity":..,"stage":..,"message":..}` | `stage`/`logger`/`category` | ✅ live-verified (real UE `AIMovementDebug.jsonl`) |
+| **Python logging** | `2024-01-02 03:04:05,123 - app - ERROR - msg` | the logger name | ⚠️ best-effort |
+| **Bracketed level** | `[WARN] msg`, `[ERROR] msg` | `Log` | ⚠️ best-effort |
 | **Anything else** | severity keyword (`error`/`warning`/`exception`/…) | generic + location | partial fallback |
+
+**JSONL is fully supported**, including `log_fields`: top-level keys (`ts`, …) and any `Key=value` /
+`Key=(x,y,z)` inside the `message` string are extracted, so a structured per-frame trace like
+`{"ts":…,"stage":"Pos","message":"Pawn=A Actor=(x,y,z) Vel=…"}` works with
+`gamedev-log fields --category Pos --fields ts,Actor.x,Actor.y,Vel,step:Actor --window t0,t1`.
 
 > ⚠️ **Unity-deep and Godot parsing are best-effort from each engine's public docs/console output — they
 > have NOT been verified against real Unity/Godot project logs yet.** Unrecognized lines still get the
