@@ -1,8 +1,9 @@
 ---
 name: gamedev-log-analyzer
 description: >-
-  Analyze an editor or build log (Unreal Engine Saved/Logs, Unity Editor.log, Godot output,
-  MSVC/UBT/MSBuild build output, or any structured text log) token-efficiently. Use when the user
+  Analyze an editor, build, or structured trace log (Unreal Engine Saved/Logs, Unity Editor.log, Godot
+  output, MSVC/UBT/MSBuild build output, JSONL / structured `.jsonl` traces, or any text log)
+  token-efficiently. Use when the user
   mentions checking,
   reading, searching, summarizing, or diffing a log; investigating editor/engine errors, warnings,
   crashes, asserts, callstacks, or log spam; or asks "what's flooding the log" / "what changed since
@@ -16,10 +17,12 @@ Read logs through the **`gamedev-log` CLI**, never `cat`/`grep`/`Get-Content` th
 are routinely tens of MB and will flood the context. The CLI parses → classifies → deduplicates →
 returns a compact, token-capped summary (often ~99% smaller than the raw log).
 
-> Engine coverage: **Unreal runtime + MSVC/UBT/MSBuild/Unity-C# build errors are live-verified.**
-> **Unity-deep and Godot parsing are best-effort from public docs and NOT yet verified against real
-> Unity/Godot logs** — say so if you report Unity/Godot results, and run `gamedev-log learnings` to see what
-> went unparsed.
+> Format coverage: **Unreal runtime + MSVC/UBT/MSBuild/Unity-C# build + JSONL are live-verified**
+> (JSONL on a real UE `AIMovementDebug.jsonl`). For JSONL, `fields` also extracts `Key=value` /
+> `Key=(x,y,z)` from inside the `message` plus top-level keys, so per-frame scalar tracking over a
+> `--window` works. **Unity-deep, Godot, Python-logging, and bracketed-level parsing are best-effort
+> from public docs and NOT verified against a specific app's real logs** — say so if you report results
+> for those, and run `gamedev-log learnings` to see what went unparsed.
 
 ## How to run it
 

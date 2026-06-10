@@ -73,8 +73,43 @@ function extractLoc(s) {
   return m ? `${m[1].replace(/\\/g, "/")}:${m[2]}` : "";
 }
 
+// Map a JSON log's level/severity field (string or numeric syslog 0-7) to our severity scale;
+// fall back to message keywords when there is no level field.
+function jsonSeverity(lvl, msg) {
+  const s = String(lvl == null ? "" : lvl).toLowerCase();
+  if (/fatal|crit|emerg|panic/.test(s)) return "Fatal";
+  if (/error|err|severe/.test(s)) return "Error";
+  if (/warn/.test(s)) return "Warning";
+  if (/debug|trace|verbose/.test(s)) return "Verbose";
+  if (/info|notice|log|display/.test(s)) return "Display";
+  if (s !== "" && /^\d+$/.test(s)) { const n = parseInt(s, 10); return n <= 3 ? "Error" : n === 4 ? "Warning" : "Display"; }
+  if (/(fatal|exception|assert(ion)?\s+failed)/i.test(msg)) return "Error";
+  if (/(^|\W)(error|fail(ed|ure)?)(\W|$)/i.test(msg)) return "Error";
+  if (/(^|\W)(warning|warn)(\W|$)/i.test(msg)) return "Warning";
+  return "Display";
+}
+
 export function parseLine(line) {
   if (!line || !line.trim()) return null;
+
+  // JSON line (JSONL): structured logs — UE structured trace (`{"ts":..,"verbosity":..,"stage":..,
+  // "message":..}`), bunyan/pino (Node), Serilog (.NET), or generic. Live-verified against a real UE
+  // AIMovementDebug .jsonl. Common key aliases are tried for level / category / message / location.
+  {
+    const t = line.trim();
+    if (t.charCodeAt(0) === 123 /* { */ && t.charCodeAt(t.length - 1) === 125 /* } */) {
+      let o = null;
+      try { o = JSON.parse(t); } catch { /* not JSON; fall through to text parsers */ }
+      if (o && typeof o === "object" && !Array.isArray(o)) {
+        const pick = (...ks) => { for (const k of ks) if (o[k] != null && o[k] !== "") return String(o[k]); return ""; };
+        const msg = pick("message", "msg", "text", "event", "Message", "RenderedMessage", "MessageTemplate");
+        const cat = pick("category", "logger", "channel", "source", "stage", "tag", "name", "module", "Category", "SourceContext") || "Json";
+        const lvl = pick("level", "severity", "verbosity", "lvl", "loglevel", "Level", "@l");
+        const loc = o.file && (o.line != null) ? `${String(o.file).replace(/\\/g, "/")}:${o.line}` : extractLoc(msg);
+        return { severity: jsonSeverity(lvl, msg), category: cat, location: loc, message: (msg || t).trim() };
+      }
+    }
+  }
 
   // Build/compile diagnostic: path(line[,col]): error|warning CODE: message  (MSVC/UBT/C#)
   let m = line.match(/^\s*(.+?)\((\d+)(?:,\d+)?\)\s*:\s*(error|warning)\b[^:]*:\s*(.*)$/i);
@@ -129,6 +164,18 @@ export function parseLine(line) {
   if (m) {
     const loc = extractLoc(line);
     if (loc) return { severity: "Display", category: "Godot", location: loc, message: line.trim() };
+  }
+
+  // Python logging default format `asctime - name - LEVELNAME - message`. BEST-EFFORT (common format,
+  // not live-verified against a specific app's real logs).
+  m = line.match(/^\d{4}-\d\d-\d\d[ T][\d:.,]+\s+-\s+([\w.]+)\s+-\s+(DEBUG|INFO|WARNING|WARN|ERROR|CRITICAL|FATAL)\s+-\s+(.*)$/);
+  if (m) {
+    return { severity: jsonSeverity(m[2], m[3]), category: m[1], location: extractLoc(m[3]), message: m[3].trim() };
+  }
+  // Bracketed level: `[ERROR] msg`, `[WARN] msg` (many engines/CLIs). BEST-EFFORT.
+  m = line.match(/^\s*\[(TRACE|DEBUG|VERBOSE|INFO|DISPLAY|NOTICE|WARN|WARNING|ERROR|FATAL|CRITICAL)\]\s*(.*)$/i);
+  if (m) {
+    return { severity: jsonSeverity(m[1], m[2]), category: "Log", location: extractLoc(m[2]), message: m[2].trim() };
   }
 
   // Unity / generic: detect a severity keyword + optional location.
@@ -187,6 +234,27 @@ const num = (s) => {
   return Number.isFinite(n) ? n : null;
 };
 
+// Flatten a JSON log line into the `Key=value` text the field extractor understands: top-level scalars
+// become `k=v`, then the message string is appended (it carries its own `Key=value` / `Key=(x,y,z)`).
+// Non-JSON lines pass through unchanged. This is what lets `log_fields` work on JSONL trace logs
+// (e.g. a UE AIMovementDebug `.jsonl` where the per-frame `Actor=(x,y,z)` lives inside `message`).
+function normForFields(raw) {
+  const t = raw.trim();
+  if (t.charCodeAt(0) !== 123 /* { */ || t.charCodeAt(t.length - 1) !== 125 /* } */) return raw;
+  let o;
+  try { o = JSON.parse(t); } catch { return raw; }
+  if (!o || typeof o !== "object" || Array.isArray(o)) return raw;
+  const parts = [];
+  let msg = "";
+  for (const [k, v] of Object.entries(o)) {
+    if (v == null) continue;
+    if (k === "message" || k === "msg" || k === "text") { msg = String(v); continue; }
+    if (typeof v === "object") continue; // skip nested arrays/objects
+    parts.push(`${k}=${v}`);
+  }
+  return parts.join(" ") + (msg ? " " + msg : "");
+}
+
 export function extractFields(text, opts = {}) {
   const {
     fields = ["ts"],
@@ -220,27 +288,28 @@ export function extractFields(text, opts = {}) {
     if (catLc && e.category.toLowerCase() !== catLc) continue;
     if (fileLc && !e.location.toLowerCase().includes(fileLc)) continue;
     if (q && !raw.toLowerCase().includes(q)) continue;
+    const norm = normForFields(raw); // JSONL → `Key=value` text (no-op for plain text lines)
     if (window) {
-      const t = num(getField(raw, "ts"));
+      const t = num(getField(norm, "ts"));
       if (t == null || t < window[0] || t > window[1]) continue;
     }
     const row = [];
     const cur = {};
     for (const c of cols) {
       if (c.kind === "value") {
-        row.push(getField(raw, c.name));
+        row.push(getField(norm, c.name));
       } else if (c.kind === "dts") {
-        const t = num(getField(raw, "ts"));
+        const t = num(getField(norm, "ts"));
         row.push(t != null && prev.ts != null ? (t - prev.ts).toFixed(3) : "");
         cur.ts = t;
       } else if (c.kind === "delta") {
-        const v = num(getField(raw, c.base));
+        const v = num(getField(norm, c.base));
         const p = prev["v:" + c.base];
         row.push(v != null && p != null ? (v - p).toFixed(3) : "");
         cur["v:" + c.base] = v;
       } else if (c.kind === "step") {
-        const x = num(vecComp(rawField(raw, c.base), 0));
-        const y = num(vecComp(rawField(raw, c.base), 1));
+        const x = num(vecComp(rawField(norm, c.base), 0));
+        const y = num(vecComp(rawField(norm, c.base), 1));
         const px = prev["x:" + c.base];
         const py = prev["y:" + c.base];
         row.push(x != null && px != null ? Math.hypot(x - px, y - py).toFixed(2) : "");
@@ -249,9 +318,9 @@ export function extractFields(text, opts = {}) {
       }
     }
     // always remember ts + referenced bases for next-row deltas
-    if (cur.ts === undefined) cur.ts = num(getField(raw, "ts"));
+    if (cur.ts === undefined) cur.ts = num(getField(norm, "ts"));
     for (const c of cols) {
-      if (c.kind === "delta" && cur["v:" + c.base] === undefined) cur["v:" + c.base] = num(getField(raw, c.base));
+      if (c.kind === "delta" && cur["v:" + c.base] === undefined) cur["v:" + c.base] = num(getField(norm, c.base));
     }
     prev = cur;
     let line = row.join("\t");

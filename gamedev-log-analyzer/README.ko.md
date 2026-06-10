@@ -47,7 +47,14 @@ Unity `Editor.log`는 보통 수십 MB의 반복 스팸이라 `cat`/`grep`하면
 | **Unity C# 컴파일** | `Assets/X.cs(12,34): error CS1002: msg` | `Build` | ✅ 검증(컴파일 경로 공유) |
 | **Unity 런타임/스택** | `NullReferenceException …`, `(at Assets/X.cs:42)` | 범용+위치 | ⚠️ best-effort — 실 Unity 로그 **미검증** |
 | **Godot** | `SCRIPT ERROR: …`, `at: f (res://x.gd:42)` | `Godot` | ⚠️ best-effort — 실 Godot 로그 **미검증** |
+| **JSONL** (UE 구조화 / bunyan / pino / Serilog) | `{"ts":..,"verbosity":..,"stage":..,"message":..}` | `stage`/`logger`/`category` | ✅ 라이브 검증(실 UE `AIMovementDebug.jsonl`) |
+| **Python logging** | `2024-01-02 03:04:05,123 - app - ERROR - msg` | logger 이름 | ⚠️ best-effort |
+| **브래킷 레벨** | `[WARN] msg`, `[ERROR] msg` | `Log` | ⚠️ best-effort |
 | **그 외** | severity 키워드(`error`/`warning`/`exception`/…) | 범용+위치 | 부분 폴백 |
+
+**JSONL 완전 지원** (`log_fields` 포함): top-level 키(`ts` 등) + `message` 안의 `Key=value` /
+`Key=(x,y,z)` 모두 추출. 즉 `{"ts":…,"stage":"Pos","message":"Pawn=A Actor=(x,y,z) Vel=…"}` 같은
+프레임 트레이스를 `gamedev-log fields --category Pos --fields ts,Actor.x,Actor.y,Vel,step:Actor --window t0,t1`로 바로 처리.
 
 > ⚠️ **Unity 심층 및 Godot 파싱은 각 엔진 공개 문서/콘솔 출력 기반 best-effort로, 실제 Unity/Godot
 > 프로젝트 로그에 대해 아직 검증되지 않았습니다.** 미인식 줄은 범용 폴백으로 처리되며, 로컬 **learnings
