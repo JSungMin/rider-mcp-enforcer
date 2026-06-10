@@ -62,10 +62,13 @@ Quote every path argument (Windows paths/spaces). `--help` lists everything.
   (new-parser candidates). See *Growing format coverage* below; a low-coverage file also auto-nudges.
 - `savings` / `savings-reset` — local cumulative report of how many tokens you've saved vs dumping raw
   logs into context. Each analysis also appends a one-line `✓ Saved ~N tokens (M× smaller)` for big logs.
-- `enforce <block|warn|off>` (or no arg = status) — Bash log-grep enforcement. A `PreToolUse` hook
-  intercepts raw log reads (`grep`/`tail`/`cat`/… over `.log`/`.jsonl`/`Logs`) and steers them here.
+- `enforce <block|warn|off>` (or no arg = status) — log-read enforcement. A `PreToolUse` hook
+  intercepts raw Bash log reads (`grep`/`tail`/`cat`/… over `.log`/`.jsonl`/`Logs`) **and unbounded
+  `Read`s of large (≥ 200 KB) logs**, steering them here. A sliced `Read` (`offset`/`limit`) always
+  passes — that's the one-step escape when you truly need raw bytes or when a format parses poorly.
   `block` (default) denies + nudges; `warn` allows + nudges; `off` disables. Env: `GDLOG_ENFORCE`. If a
-  user hits the block and genuinely wants raw bytes, tell them `gamedev-log enforce warn|off`.
+  user hits the block and genuinely wants raw bytes, tell them to re-Read with `offset`/`limit`, or
+  `gamedev-log enforce warn|off`.
 
 ## Default flow ("check the logs")
 

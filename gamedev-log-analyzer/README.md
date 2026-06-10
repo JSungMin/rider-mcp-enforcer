@@ -42,9 +42,10 @@ scalar columns that decide the answer.
   disappeared, and groups whose count changed. Unchanged groups are omitted, so a regression-triage diff
   across runs costs a fraction of re-reading either log.
 - **Enforcement (opt-out):** a `PreToolUse` hook intercepts raw Bash log dumps (`grep`/`tail`/`cat`/`rg`
-  over a `.log` / `.jsonl` / `Logs` path) and steers them here, so the token-cheap path is the default
-  instead of something you have to remember. `block` (default) denies + nudges, `warn` allows + nudges,
-  `off` disables — switch with `gamedev-log enforce <mode>` or `GDLOG_ENFORCE`.
+  over a `.log` / `.jsonl` / `Logs` path) **and unbounded `Read`s of large (≥ 200 KB) log files**, and
+  steers them here — so the token-cheap path is the default instead of something you have to remember. A
+  sliced `Read` (`offset`/`limit`) always passes, so it never strands you. `block` (default) denies +
+  nudges, `warn` allows + nudges, `off` disables — switch with `gamedev-log enforce <mode>` or `GDLOG_ENFORCE`.
 
 ## Supported log formats
 
@@ -104,12 +105,20 @@ bodies). If [rider-mcp-enforcer](../README.md) is installed, resolve each basena
 
 ## Enforcement — make the token-cheap path the default
 
-Reading a log with `tail … | grep …` dumps raw lines straight into the model's context — exactly what
-this tool exists to avoid. A `PreToolUse` hook closes that gap: when a Bash command is a raw read
-(`grep`/`rg`/`ack`/`ag`/`findstr`/`tail`/`head`/`cat`) of a **log target** (`.log`, `.jsonl`, rotated
-`.log.N`, or a path under `Logs/` / `Saved/Logs/`), it is intercepted and you're pointed at the
-`gamedev-log` equivalent. Code grep (`.cpp`/`.cs`/`src/…`) and non-log reads pass through untouched —
-that domain belongs to [rider-mcp-enforcer](../README.md), which deliberately lets logs through.
+Reading a log with `tail … | grep …` — or opening a multi-MB log with the `Read` tool — dumps raw
+lines straight into the model's context, exactly what this tool exists to avoid. A `PreToolUse` hook
+closes both gaps:
+
+- **Bash**: a raw read (`grep`/`rg`/`ack`/`ag`/`findstr`/`tail`/`head`/`cat`) of a **log target**
+  (`.log`, `.jsonl`, rotated `.log.N`, or a path under `Logs/` / `Saved/Logs/`) is intercepted.
+- **Read tool**: an **unbounded** read of a **large** log file (≥ 200 KB) is intercepted. A *sliced*
+  read (`offset`/`limit` present) always passes — that's a one-step escape and the fallback for any
+  format the analyzer parses poorly, so a blocked Read never strands you. Small logs (< 200 KB) pass
+  (a raw read is already cheap).
+
+Code grep (`.cpp`/`.cs`/`src/…`) and non-log reads pass through untouched — that domain belongs to
+[rider-mcp-enforcer](../README.md), which deliberately lets logs through. The `Grep` tool is left
+alone: it's already line-scoped and result-capped, so it isn't a context flood.
 
 | Mode | Behavior |
 | --- | --- |
@@ -126,8 +135,8 @@ GDLOG_ENFORCE=off <cmd>        # per-shell override (env beats config)
 ```
 
 Mode is read **env `GDLOG_ENFORCE` > `~/.gamedev-log-analyzer/config.json` > default `block`**. The hook
-fails open — any parse/IO error allows the command, so it never wedges your shell. Note the hook only
-guards **Bash**; the `Read` tool is untouched (use `gamedev-log` for the token win on big logs).
+fails open — any parse/IO error (missing file, permission denied, a directory, an unstattable path)
+allows the action, so it never wedges your workflow.
 
 ## Optional: enable the MCP server
 The same engine ([`server/logs.js`](server/logs.js) + [`server/core.js`](server/core.js)) also runs as

@@ -42,6 +42,28 @@ export function isLogReadSegment(segment) {
   return hasLogTarget(String(segment).toLowerCase());
 }
 
+// A bare file path that is a log target (for the Read-tool branch, where there's no shell exec).
+export function isLogPath(p) {
+  return hasLogTarget(String(p || "").toLowerCase());
+}
+
+// Coarse volume gate for the Read tool: a log at/above this many bytes is worth steering to the
+// analyzer (~3-5k tokens raw). Below it, a raw Read is cheap — let it through. Size is a blunt signal
+// (it misses redundancy), but it's the only thing knowable WITHOUT reading the file. Hardcoded on
+// purpose — no config key until there's evidence anyone needs to tune it.
+export const READ_MIN_BYTES = 200_000;
+
+// Decision for the `Read` tool. PURE — the caller supplies the file size and whether a slice
+// (offset/limit) was requested, so this never touches the filesystem (the hook does the stat and
+// fails open on any error). Intercept only an UNBOUNDED read of a LARGE LOG; a slice always passes,
+// which is the one-step escape hatch (Read again with offset/limit) and Claude's fallback when the
+// analyzer parses a format poorly.
+export function shouldBlockRead(filePath, sizeBytes, sliced) {
+  if (!filePath || sliced) return false;
+  if (!isLogPath(filePath)) return false;
+  return Number(sizeBytes) >= READ_MIN_BYTES;
+}
+
 // True if ANY shell segment of the command is a raw log read (so `tail x.log | grep err` is caught
 // even though the grep half has no filename — the tail half does).
 export function shouldBlockLogBash(cmd) {
@@ -97,19 +119,28 @@ export function writeEnforceMode(mode) {
   return norm;
 }
 
-// The nudge shown when a raw log read is intercepted. One source of truth for hook + tests.
-export function nudgeText(cmd) {
-  return (
-    "[gamedev-log-analyzer] Intercepted a raw log read via Bash" +
-    (cmd ? `:\n  ${String(cmd).slice(0, 200)}` : "") +
+// The nudge shown when a raw log read is intercepted. One source of truth for the hook + tests.
+// `kind` ∈ {"bash","read"} controls the wording and the escape hatch so the message never lies about
+// how the read happened. `target` is the command (bash) or the file path (read).
+export function nudgeText(target, kind = "bash") {
+  const t = String(target || "");
+  const how = kind === "read" ? "a large log via the Read tool" : "a raw log read via Bash";
+  const head = "[gamedev-log-analyzer] Intercepted " + how + (t ? `:\n  ${t.slice(0, 200)}` : "");
+  const pathRef = kind === "read" && t ? t : "<log>";
+  const tools =
     "\nUse gamedev-log instead — it parses, dedups, and token-caps the log " +
     "(a multi-MB log → a few hundred tokens) rather than dumping raw lines into context:\n" +
-    "  - severity + category rollup   -> gamedev-log summary --path <log>\n" +
-    "  - search / dedup groups        -> gamedev-log search  --path <log> --severityMin Warning\n" +
-    "  - build warnings by code       -> gamedev-log search  --path <log> --groupBy code\n" +
-    "  - jump list (file:line only)   -> gamedev-log locate  --path <log>\n" +
-    "  - scalar fields over time      -> gamedev-log fields  --path <log> --fields ts,<Key>\n" +
-    "Genuinely need the raw bytes? Lower enforcement: `gamedev-log enforce warn` (nudge only) or " +
-    "`gamedev-log enforce off` (allow), or set GDLOG_ENFORCE=off for this shell."
-  );
+    `  - severity + category rollup   -> gamedev-log summary --path ${pathRef}\n` +
+    `  - search / dedup groups        -> gamedev-log search  --path ${pathRef} --severityMin Warning\n` +
+    `  - build warnings by code       -> gamedev-log search  --path ${pathRef} --groupBy code\n` +
+    `  - jump list (file:line only)   -> gamedev-log locate  --path ${pathRef}\n` +
+    `  - scalar fields over time      -> gamedev-log fields  --path ${pathRef} --fields ts,<Key>\n`;
+  const escape =
+    kind === "read"
+      ? "Genuinely need the raw bytes? Re-run Read with `offset`/`limit` for a bounded slice (always " +
+        `allowed), or peek with \`gamedev-log tail --path ${pathRef}\`, or lower enforcement: ` +
+        "`gamedev-log enforce warn|off`."
+      : "Genuinely need the raw bytes? Lower enforcement: `gamedev-log enforce warn` (nudge only) or " +
+        "`gamedev-log enforce off` (allow), or set GDLOG_ENFORCE=off for this shell.";
+  return head + tools + escape;
 }
