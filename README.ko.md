@@ -53,9 +53,13 @@ $ grep -rn "AMyActor" Source/**/*.cpp
 
 ---
 
-Claude가 Bash `grep` 대신 **JetBrains Rider의 실시간 인덱스**로 심볼 검색 · 참조(usage) 찾기 · 파일
-검색 · 함수/변수 탐색을 하도록 만들고, *그걸 강제*하며, 참조가 폭발할 때 토큰 사용량을 상한선으로
-막아주는 **Claude Code 플러그인**입니다.
+Claude가 Bash `grep`과 텍스트 치환 대신 **JetBrains Rider의 실시간 인덱스**로 심볼 검색 · 참조(usage)
+찾기 · 파일 검색 · 함수/변수 탐색 · 이름 변경(rename) 리팩터를 하도록 만들고, 참조가 폭발할 때 토큰
+사용량을 상한선으로 막아주는 **Claude Code 플러그인**입니다.
+
+이름 변경은 Rider의 `rename_refactoring`을 거칩니다. 프로젝트 전역의 모든 참조를 의미 기반으로 갱신하므로,
+Claude가 심볼을 `sed`로 바꿔 부분일치에 빌드를 깨뜨리는 일이 없습니다. 라우팅 스킬의
+[Refactoring](skills/rider-search/SKILL.md) 참고.
 
 `grep`이 느리고 컨텍스트(토큰)를 잡아먹는 대형 **Unreal C++ (Rider for Unreal)** 및 **.NET/C#**
 코드베이스를 위해 만들었습니다.
@@ -131,7 +135,8 @@ Rider 2025.2+ 는 MCP 서버를 내장하고 있고, (라이브로 확인된) `s
 - `/rider-mcp-enforcer:setup` — 플러그인 설정 ([설정](#설정-명령어) 참고).
 - `/rider-mcp-enforcer:savings` — 누적 토큰 절감량 표시.
 - MCP 도구(서버 `rider-search`): `rider_setup`, `rider_config`, `rider_detect`, `rider_savings`,
-  `rider_savings_reset` + 요약되는 Rider 검색 도구들(`search_symbol`, `search_text`, …).
+  `rider_savings_reset`, 요약되는 Rider 검색 도구들(`search_symbol`, `search_text`, …), 그리고 Rider
+  리팩터 도구(`rename_refactoring`, `move_type_to_namespace`, `reformat_file`).
 
 > **이 Rider MCP 빌드의 실제 한계 2가지 (라이브 확인됨):**
 > 1. **의미 기반 find-usages/find-references 도구가 없음.** 참조 찾기는 `search_text`/`search_regex`

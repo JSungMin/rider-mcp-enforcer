@@ -10,7 +10,7 @@
     {
       "name": "rider-mcp-enforcer",
       "source": "./",
-      "version": "0.2.1",
+      "version": "0.2.2",
       "category": "development",
       "description": "Force Claude Code to use Rider's MCP symbol/reference/file index instead of Bash grep, with token-flood summarization. Bundles gamedev-log-analyzer."
     },
