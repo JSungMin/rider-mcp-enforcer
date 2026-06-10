@@ -76,6 +76,7 @@ const TOOLS = [
         severityMin: { type: "string", description: "default Verbose (all)" },
         window: { type: "array", items: { type: "number" } },
         max: { type: "number" },
+        stats: { type: "boolean", description: "Aggregate each numeric column to min/max/avg/Δ (one line/col) instead of rows — fewer tokens." },
       },
       required: ["fields"],
     },
@@ -147,6 +148,16 @@ const TOOLS = [
   {
     name: "log_learnings_reset",
     description: "Clear the local learnings ledger.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "log_savings",
+    description: "Report how many tokens you've saved vs dumping raw logs into context (local, cumulative).",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "log_savings_reset",
+    description: "Clear the local savings ledger.",
     inputSchema: { type: "object", properties: {} },
   },
 ];

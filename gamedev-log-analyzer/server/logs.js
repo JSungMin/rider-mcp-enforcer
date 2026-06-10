@@ -271,6 +271,7 @@ export function extractFields(text, opts = {}) {
     window = null, // [t0, t1] on ts
     max = 200,
     maxLineChars = 200,
+    stats = false, // aggregate each numeric column to min/max/avg/Δ (one line/col) instead of rows
   } = opts;
   const minRank = rank(severityMin);
   const q = String(query).toLowerCase();
@@ -286,6 +287,8 @@ export function extractFields(text, opts = {}) {
   });
 
   const rows = [];
+  const acc = stats ? cols.map(() => []) : null; // per-column numeric values for stats mode
+  let matched = 0;
   let prev = {};
   for (const raw of text.split(/\r?\n/)) {
     const e = parseLine(raw);
@@ -329,10 +332,27 @@ export function extractFields(text, opts = {}) {
       if (c.kind === "delta" && cur["v:" + c.base] === undefined) cur["v:" + c.base] = num(getField(norm, c.base));
     }
     prev = cur;
+    if (stats) {
+      for (let i = 0; i < cols.length; i++) { const n = num(row[i]); if (n != null) acc[i].push(n); }
+      if (++matched >= 500000) break; // safety bound; the window/query/category filters normally cap it
+      continue;
+    }
     let line = row.join("\t");
     if (line.length > maxLineChars) line = line.slice(0, maxLineChars) + " …";
     rows.push(line);
     if (rows.length >= max) break;
+  }
+  if (stats) {
+    const fmt = (n) => (Number.isInteger(n) ? String(n) : n.toFixed(3));
+    const lines = cols.map((c, i) => {
+      const arr = acc[i];
+      if (!arr.length) return `${c.name}: (no numeric values)`;
+      let min = Infinity, mx = -Infinity, sum = 0;
+      for (const v of arr) { if (v < min) min = v; if (v > mx) mx = v; sum += v; }
+      const first = arr[0], last = arr[arr.length - 1];
+      return `${c.name}: n=${arr.length} min=${fmt(min)} max=${fmt(mx)} avg=${fmt(sum / arr.length)} first=${fmt(first)} last=${fmt(last)} Δ=${fmt(last - first)}`;
+    });
+    return `stats over ${matched} matched row(s):\n${lines.join("\n") || "(no matching rows)"}`;
   }
   const header = fields.join("\t");
   const footer = rows.length >= max ? `\n… capped at ${max} rows (narrow window/query/maxGroups).` : "";

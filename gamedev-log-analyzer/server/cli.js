@@ -23,8 +23,9 @@ Commands:
   summary           Severity counts + top categories (no bodies).  [--path|--projectPath]
   search            Parse + dedup into templated groups w/ counts.
                     [--path --query --severityMin --category --file --groupBy --maxGroups]
-  fields            Columnar scalar extraction from trace logs.
-                    [--path --fields a,b,c --query --severityMin --window t0,t1 --max]
+  fields            Columnar scalar extraction from trace logs. Add --stats for per-column
+                    min/max/avg/Δ (one line/col) instead of rows — even fewer tokens.
+                    [--path --fields a,b,c --query --severityMin --window t0,t1 --max --stats]
   diff              Delta between two logs (new/gone/changed only).
                     [--pathA --pathB | --projectPath] [--query --severityMin --category --file --groupBy --minDelta]
   locate            Jump list: distinct file:line of matches, no bodies (for opening source).
@@ -32,6 +33,8 @@ Commands:
   tail              Last N raw lines.                               [--path --lines]
   learnings         Local learnings report (parse coverage etc.).
   learnings-reset   Clear the local learnings ledger.
+  savings           How many tokens you've saved vs dumping raw logs into context.
+  savings-reset     Clear the local savings ledger.
   setup             Persist config.   [--projectPath --logPath --logMaxBytes --maxGroups --maxLineChars]
   config            Show effective settings.
 
@@ -41,7 +44,7 @@ Settings precedence: env (GDLOG_*) > ~/.gamedev-log-analyzer/config.json > defau
 // Flags that should be parsed as comma-separated lists.
 const LIST_FLAGS = new Set(["fields", "window"]);
 // Flags with no value (presence = true).
-const BOOL_FLAGS = new Set(["basename"]);
+const BOOL_FLAGS = new Set(["basename", "stats"]);
 
 function parseArgs(argv) {
   const a = {};
@@ -77,6 +80,7 @@ function normCommand(cmd) {
   if (!cmd) return "";
   let c = cmd.toLowerCase().replace(/-/g, "_");
   if (c === "learnings_reset") return "log_learnings_reset";
+  if (c === "savings_reset") return "log_savings_reset";
   c = c.replace(/^log_/, "");
   return "log_" + c;
 }
