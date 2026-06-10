@@ -74,6 +74,14 @@ const engineOut = analyzeLog(log, { severityMin: "Warning", groupBy: "callsite" 
 const coreOk = !viaCore.isError && viaCore.text.endsWith(engineOut);
 try { fs.unlinkSync(tmp); } catch { /* ignore */ }
 
+// coverage hint: an unknown format (<40% parsed, ≥100 lines) gets a one-line nudge to the learnings
+// ledger; a supported log does not. Guards the self-learning "surface the gap" behavior.
+const junkPath = path.join(os.tmpdir(), "gamedev-log-eval-junk.log");
+fs.writeFileSync(junkPath, Array.from({ length: 150 }, () => "random telemetry blob alpha 1 beta 2").join("\n"));
+const hintOnUnknown = /Only \d+% of lines parsed/.test(runTool("log_summary", { path: junkPath }).text);
+try { fs.unlinkSync(junkPath); } catch { /* ignore */ }
+const covHintOk = hintOnUnknown && !/Only \d+% of lines parsed/.test(viaCore.text); // supported log → no hint
+
 // Multi-engine classification — SYNTHETIC samples from each engine's documented format. UE + MSVC build
 // are live-verified; Unity-deep + Godot are BEST-EFFORT (format from public docs, NOT verified against
 // real Unity/Godot logs). This guards the documented shapes only, not real-world coverage.
@@ -121,6 +129,7 @@ const rows = [
   ["log_locate omits bodies", locateNoBodies, "true", locateNoBodies],
   ["multi-engine classify (synthetic)", engineOk, "true", engineOk],
   ["JSONL field extraction", jsonlOk, "true", jsonlOk],
+  ["coverage hint (unknown fmt only)", covHintOk, "true", covHintOk],
 ];
 
 console.log(`gamedev-log-analyzer eval — ${N} synthetic (sanitized) lines\n`);
