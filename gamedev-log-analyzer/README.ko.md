@@ -88,10 +88,12 @@ min/max/avg/Δ), `diff`, `locate`, `tail`, `learnings`, `learnings-reset`, `savi
 `tail … | grep …`으로 — 또는 `Read` 도구로 대용량 로그를 열면 — 생 라인이 그대로 모델 컨텍스트에
 쏟아짐. `PreToolUse` 훅이 두 갭을 닫음:
 
-- **Bash**: **로그 대상**(`.log`/`.jsonl`/회전된 `.log.N`/`Logs`·`Saved/Logs` 경로)에 대한 생
-  읽기(`grep`/`rg`/`ack`/`ag`/`findstr`/`tail`/`head`/`cat`)를 가로챔 — 경로가 셸 변수에 담겨
-  읽기와 경로가 다른 세그먼트에 있어도(`log="….log"; tail -3 "$log" | grep err`) 잡음. (`.output`
-  같은 비-`.log`/`.jsonl` 확장자는 `Logs/` 경로 아래가 아니면 미매칭 — Bash size-gate 불가라 의도적.)
+- **Bash**: **로그 대상**(`.log`/`.jsonl`/회전된 `.log.N`/`Logs`·`Saved/Logs` 경로)에 대한 **무제한**
+  읽기(`cat`, 맨 `grep`/`rg`, `tail -f`, `tail -n +N`, 큰 `tail -n N`)를 가로챔 — 경로가 셸 변수에
+  담겨 읽기와 경로가 다른 세그먼트여도(`log="….log"; cat "$log"`) 잡음. **bounded peek**(≤50줄
+  `tail`/`head`(기본10), count-only `grep -c`/`rg -c`)는 **통과** — 출력이 몇 줄/숫자 1개라 폭주 아님
+  (Read slice escape의 Bash판). (`.output` 같은 비-`.log`/`.jsonl` 확장자는 `Logs/` 아래가 아니면
+  미매칭 — Bash size-gate 불가라 의도적.)
 - **Read 도구**: 대용량(≥ 200 KB) 로그의 **무제한** 읽기를 가로챔. 슬라이스 읽기(`offset`/`limit`)는
   항상 통과 — 한 단계 escape이자 분석기가 잘 못 파싱하는 포맷의 fallback이라, 막힌 Read가 막다른 길이
   되지 않음. 작은 로그(< 200 KB)는 통과(이미 쌈).
