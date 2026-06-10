@@ -81,8 +81,9 @@ process.stdin.on("end", () => {
 
   if (mode === "warn") {
     // allow, but inject the nudge into the model's context (stderr on exit 0 isn't reliably surfaced).
+    // Trailing newline for line-buffered stdout readers.
     process.stdout.write(
-      JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", additionalContext: nudge } })
+      JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", additionalContext: nudge } }) + "\n"
     );
     process.exit(0);
   }
