@@ -4,6 +4,7 @@
 
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-7C3AED)](https://code.claude.com/docs/en/plugins)
 [![CLI](https://img.shields.io/badge/CLI-zero%20deps-1f6feb)](#claude가-사용하는-법-기본-cli)
+[![npm](https://img.shields.io/npm/v/gamedev-log-analyzer)](https://www.npmjs.com/package/gamedev-log-analyzer)
 [![release](https://img.shields.io/github/v/release/JSungMin/rider-mcp-enforcer)](https://github.com/JSungMin/rider-mcp-enforcer/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](../LICENSE)
 [![Stars](https://img.shields.io/github/stars/JSungMin/rider-mcp-enforcer?style=social)](https://github.com/JSungMin/rider-mcp-enforcer/stargazers)
@@ -121,6 +122,17 @@ cd server && npm install && cd ..
 ```
 빌드도, `npm install`도 없음 — CLI는 순수 Node. (`rider-mcp-enforcer`를 설치하면 이것도 자동으로 함께
 설치됩니다.) 타입드 MCP 도구를 원하면 [선택: MCP 서버 켜기](#선택-mcp-서버-켜기) 참고.
+
+### 독립 CLI (npm — Claude Code 불필요)
+**[npm](https://www.npmjs.com/package/gamedev-log-analyzer)**에도 게시되어 스크립트/CI/타 에이전트 등
+어디서나 실행 가능:
+```bash
+npx -p gamedev-log-analyzer gamedev-log --help
+npx -p gamedev-log-analyzer gamedev-log search --path Editor.log --severityMin Error --groupBy callsite
+npx -p gamedev-log-analyzer gamedev-log fields --path trace.jsonl --category Pos --fields ts,Actor.x,Vel,step:Actor
+# 전역 설치 후 `gamedev-log <command>`:
+npm i -g gamedev-log-analyzer
+```
 
 ## 설정
 설정은 `~/.gamedev-log-analyzer/config.json` (우선순위: env > config > 기본값). `gamedev-log setup …`(예:

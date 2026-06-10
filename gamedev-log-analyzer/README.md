@@ -4,6 +4,7 @@
 
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-7C3AED)](https://code.claude.com/docs/en/plugins)
 [![CLI](https://img.shields.io/badge/CLI-zero%20deps-1f6feb)](#how-claude-uses-it-cli-by-default)
+[![npm](https://img.shields.io/npm/v/gamedev-log-analyzer)](https://www.npmjs.com/package/gamedev-log-analyzer)
 [![release](https://img.shields.io/github/v/release/JSungMin/rider-mcp-enforcer)](https://github.com/JSungMin/rider-mcp-enforcer/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](../LICENSE)
 [![Stars](https://img.shields.io/github/stars/JSungMin/rider-mcp-enforcer?style=social)](https://github.com/JSungMin/rider-mcp-enforcer/stargazers)
@@ -128,6 +129,17 @@ This exposes `log_detect`, `log_summary`, `log_search`, `log_fields`, `log_diff`
 No build, no `npm install` — the CLI is pure Node. (Installing `rider-mcp-enforcer` also pulls this in
 automatically — see the [marketplace](../README.md#marketplace--two-plugins).) To use typed MCP tools
 instead, see [Optional: enable the MCP server](#optional-enable-the-mcp-server).
+
+### Standalone CLI (npm — no Claude Code needed)
+The analyzer is also published to **[npm](https://www.npmjs.com/package/gamedev-log-analyzer)**, so you
+can run it anywhere — scripts, CI, other agents:
+```bash
+npx -p gamedev-log-analyzer gamedev-log --help
+npx -p gamedev-log-analyzer gamedev-log search --path Editor.log --severityMin Error --groupBy callsite
+npx -p gamedev-log-analyzer gamedev-log fields --path trace.jsonl --category Pos --fields ts,Actor.x,Vel,step:Actor
+# or install globally, then just `gamedev-log <command>`:
+npm i -g gamedev-log-analyzer
+```
 
 ## Setup
 Settings live in `~/.gamedev-log-analyzer/config.json` (precedence: env > config > default). Configure via
