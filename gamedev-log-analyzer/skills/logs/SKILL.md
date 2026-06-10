@@ -55,7 +55,8 @@ Quote every path argument (Windows paths/spaces). `--help` lists everything.
 - `tail` — last N raw lines (escape hatch). `--lines N`.
 - `setup` / `config` — persist/show settings (`~/.gamedev-log-analyzer/config.json`). Keys: `--projectPath
   --logPath --logMaxBytes --maxGroups --maxLineChars`.
-- `learnings` / `learnings-reset` — local sanitized parse-coverage report.
+- `learnings` / `learnings-reset` — local sanitized parse-coverage report + top unparsed line shapes
+  (new-parser candidates). See *Growing format coverage* below; a low-coverage file also auto-nudges.
 
 ## Default flow ("check the logs")
 
@@ -85,6 +86,28 @@ Log entries carry `file:line`. When the user wants to **open / fix the offending
 
 Skip `locate` and read directly only when there's a single known location. For many errors, `locate`
 first so you batch-resolve the distinct callsites instead of re-scanning the log per file.
+
+## Growing format coverage (self-learning loop)
+
+The analyzer keeps a **local, sanitized learnings ledger** (`~/.gamedev-log-analyzer/learnings.json`):
+every run records parse coverage + **templated shapes of UNPARSED lines** (variable parts masked; never
+transmitted). When a log barely parses, `summary`/`search`/`fields` print a one-line nudge
+(`⚠ Only N% of lines parsed …`). That is the signal to **grow a new format** — and you (Claude) are the
+right layer to do it, not a heuristic. The loop:
+
+1. **See the gap** — the low-coverage hint, or run `gamedev-log learnings` for the top unparsed shapes.
+2. **Draft a parser** — add a branch to `server/logs.js` `parseLine` (or a JSON-key alias / `--window`
+   field) that covers the shape. Match the existing style; mark it **best-effort / ⚠️ unverified** in
+   comments unless you have a real sample to verify against.
+3. **Add an eval fixture** — a synthetic line in `eval/run.mjs`'s `engineCases` (or a field-extraction
+   case) asserting the new shape's severity/category/location, so it can't silently regress.
+4. **Update the support matrix** (README EN+KO) with the new row + its verification status.
+5. **Open a PR** (`enhancement`), bump `gamedev` minor, tag `gamedev-v<x.y.z>` to publish to npm.
+
+This is how JSONL support was added: a real `.jsonl` log tripped the low-coverage path, the ledger
+showed the `{"<q>":…}` shape, and that became the JSON branch + eval guard. Prefer this over inventing a
+CLI "auto-propose" command — the LLM writes better parsers than a regex heuristic, and the eval gate
+keeps it honest.
 
 ## Why CLI (not an MCP server) by default
 

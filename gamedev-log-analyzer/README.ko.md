@@ -58,8 +58,10 @@ Unity `Editor.log`는 보통 수십 MB의 반복 스팸이라 `cat`/`grep`하면
 
 > ⚠️ **Unity 심층 및 Godot 파싱은 각 엔진 공개 문서/콘솔 출력 기반 best-effort로, 실제 Unity/Godot
 > 프로젝트 로그에 대해 아직 검증되지 않았습니다.** 미인식 줄은 범용 폴백으로 처리되며, 로컬 **learnings
-> 원장**(`gamedev-log learnings`)이 미파싱 라인 템플릿을 보고해 실제 갭을 파서 후보로 드러냅니다. 실
-> Unity/Godot 로그 샘플(sanitized)은 환영 — 이슈를 열어주세요.
+> 원장**(`gamedev-log learnings`)이 미파싱 라인 템플릿을 보고해 실제 갭을 파서 후보로 드러냅니다.
+> 파싱률이 낮으면 `summary`/`search`/`fields`가 `⚠ Only N% parsed` 한 줄도 출력 — JSONL 지원을 키운
+> 바로 그 자가학습 루프(skill의 *Growing format coverage* 참고). 실 Unity/Godot 로그 샘플(sanitized)은
+> 환영 — 이슈를 열어주세요.
 
 ## Claude가 사용하는 법 (기본 CLI)
 Claude는 **skill**을 통해 `gamedev-log` CLI를 셸 호출합니다 — **상시 컨텍스트 비용이 없습니다**(로그가

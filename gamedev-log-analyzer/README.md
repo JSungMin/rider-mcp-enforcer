@@ -62,7 +62,9 @@ scalar columns that decide the answer.
 > ⚠️ **Unity-deep and Godot parsing are best-effort from each engine's public docs/console output — they
 > have NOT been verified against real Unity/Godot project logs yet.** Unrecognized lines still get the
 > generic fallback, and the local **learnings ledger** (`gamedev-log learnings`) reports templated shapes of
-> unparsed lines so real-world gaps surface as concrete parser candidates. Real Unity/Godot log samples
+> unparsed lines so real-world gaps surface as concrete parser candidates. When a file barely parses,
+> `summary`/`search`/`fields` also print a one-line `⚠ Only N% parsed` nudge — that's the self-learning
+> loop that grew JSONL support (see the skill's *Growing format coverage*). Real Unity/Godot log samples
 > (sanitized) are very welcome — please open an issue.
 
 ## How Claude uses it (CLI by default)

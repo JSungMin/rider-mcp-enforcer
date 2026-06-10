@@ -75,6 +75,19 @@ function recordLearnings(text) {
   } catch {
     /* best-effort */
   }
+  return l; // per-file {total, parsed, coverage, ...} for the coverage hint
+}
+// One-line nudge when a file barely parses — likely an unsupported format. Conservative (≥100 lines,
+// <40% parsed) so chatty-but-supported logs don't trip it. Surfaces the self-learning ledger so the gap
+// becomes a concrete parser candidate (see the SKILL's "growing format coverage" recipe).
+function coverageHint(l) {
+  if (!l || l.total < 100 || l.coverage >= 0.4) return "";
+  const pct = Math.round(l.coverage * 100);
+  const top = (l.misses && l.misses[0] && l.misses[0].k) ? `\n  top unparsed shape: ${l.misses[0].k}` : "";
+  return (
+    `\n\n⚠ Only ${pct}% of lines parsed — this format may be unsupported. ` +
+    `Run \`gamedev-log learnings\` for the top unparsed shapes (new-parser candidates).${top}`
+  );
 }
 function learningsReport() {
   const s = readLearn();
@@ -169,7 +182,8 @@ export function runTool(name, a = {}) {
       return out(`Last ${tail.length} line(s) of ${lp}:\n` + tail.join("\n"));
     }
     const text = readText(lp, LOG_MAX_BYTES);
-    try { recordLearnings(text); } catch { /* learnings are best-effort */ }
+    let covHint = "";
+    try { covHint = coverageHint(recordLearnings(text)); } catch { /* learnings are best-effort */ }
     if (name === "log_locate") {
       return out(
         `Source: ${lp}\n` +
@@ -180,7 +194,7 @@ export function runTool(name, a = {}) {
             file: a.file || "",
             max: Number(a.max) > 0 ? Number(a.max) : 60,
             basename: a.basename === true || a.basename === "true",
-          })
+          }) + covHint
       );
     }
     if (name === "log_fields") {
@@ -195,7 +209,7 @@ export function runTool(name, a = {}) {
             window: Array.isArray(a.window) && a.window.length === 2 ? a.window : null,
             max: Number(a.max) || 200,
             maxLineChars: MAX_LINE_CHARS,
-          })
+          }) + covHint
       );
     }
     if (name === "log_search" || name === "log_summary") {
@@ -210,7 +224,7 @@ export function runTool(name, a = {}) {
             maxLineChars: MAX_LINE_CHARS,
             summaryOnly: name === "log_summary",
             groupBy: a.groupBy === "callsite" ? "callsite" : "template",
-          })
+          }) + covHint
       );
     }
     return err(`Unknown tool: ${name}`);
