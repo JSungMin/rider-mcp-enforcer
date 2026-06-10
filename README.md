@@ -53,10 +53,14 @@ $ grep -rn "AMyActor" Source/**/*.cpp
 
 ---
 
-A Claude Code plugin that routes symbol search, find-usages, file search, and function/variable
-navigation through JetBrains Rider's live index instead of Bash `grep`, and caps the tokens a
-find-usages flood can spend. It's built for large Unreal C++ (Rider for Unreal) and .NET/C# codebases,
-where `grep` is slow and burns context.
+A Claude Code plugin that routes symbol search, find-usages, file search, function/variable navigation,
+and rename refactoring through JetBrains Rider's live index instead of Bash `grep` and text replace, and
+caps the tokens a find-usages flood can spend. It's built for large Unreal C++ (Rider for Unreal) and
+.NET/C# codebases, where `grep` is slow and burns context.
+
+Renames go through Rider's `rename_refactoring`, which updates every reference across the project
+semantically, so Claude never tries to `sed` a symbol name and break the build on a partial match. See
+[Refactoring](skills/rider-search/SKILL.md) in the routing skill.
 
 ## Marketplace — two plugins
 
@@ -129,7 +133,8 @@ MCP connected; `log-analyst` runs on Node alone.
 - `/rider-mcp-enforcer:setup` — configure the plugin (see [Setup](#setup--configuration-command)).
 - `/rider-mcp-enforcer:savings` — show cumulative token savings.
 - MCP tools (server `rider-search`): `rider_setup`, `rider_config`, `rider_detect`, `rider_savings`,
-  `rider_savings_reset`, plus the summarized Rider search tools (`search_symbol`, `search_text`, …).
+  `rider_savings_reset`, the summarized Rider search tools (`search_symbol`, `search_text`, …), and the
+  Rider refactor tools (`rename_refactoring`, `move_type_to_namespace`, `reformat_file`).
 >
 > **Two real limitations of this Rider MCP build (verified live):**
 > 1. **No semantic find-usages/find-references tool.** Reference-finding falls back to `search_text`/

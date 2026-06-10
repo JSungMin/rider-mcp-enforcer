@@ -38,6 +38,25 @@ Don't claim semantic usage results you didn't get.
   spawn a subagent for a single lookup, and don't run ten sequential inline lookups when one delegation
   would do. "Related" is the signal — count alone doesn't decide it.
 
+## Refactoring: rename / move / reformat (use Rider, never text replace)
+Renaming a function, variable, class, field, or type is a **semantic** operation. Rider does it
+correctly across the whole project; a text find-and-replace does not.
+
+- **Rename any symbol → `rename_refactoring`** (args: `pathInProject`, `symbolName`, `newName`, plus
+  `projectPath` when known). Rider updates **every** reference project-wide, including other files, and
+  won't touch a substring, a comment, or a same-named but unrelated symbol. This is ALWAYS how you
+  rename. Never use `sed`/`perl -i`, a multi-file `Edit`, or `replace_text_in_file` to rename a symbol —
+  those hit partial matches and comments, miss overloads and cross-file refs, and silently break the build.
+- **Move a C#/.NET type to another namespace → `move_type_to_namespace`** (args: `filePath`,
+  `typeName`, `targetNamespace`). Updates the declaration and all references across the solution.
+- **Reformat a file → `reformat_file`.**
+- `replace_text_in_file` is for a literal text edit (a string literal, a comment), NOT for renaming a symbol.
+
+A rename is a single semantic call that does the whole job, so run it **inline** — it is not a
+multi-step investigation and needs no subagent. If you don't know the exact `symbolName` or its path,
+do one `search_symbol` first, then rename. If the result carries a `⚠ INCOMPLETE` banner or Rider
+reports the symbol is ambiguous, stop and confirm with the user before renaming.
+
 ## Incomplete results — STOP and ask the user
 If a tool result contains a `⚠ INCOMPLETE RESULTS` banner, the proxy already auto-raised the limit
 once and the match set is STILL not exhaustive. You are seeing a partial list.
