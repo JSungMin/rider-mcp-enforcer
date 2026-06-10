@@ -105,8 +105,8 @@ const savingsLineOk = /✓ Saved ~[\d,]+ tokens here/.test(viaCore.text); // via
 // are live-verified; Unity-deep + Godot are BEST-EFFORT (format from public docs, NOT verified against
 // real Unity/Godot logs). This guards the documented shapes only, not real-world coverage.
 const engineCases = [
-  { line: "Assets/Game/Foo.cs(12,34): error CS1002: ; expected", sev: "Error", cat: "Build" }, // Unity C# compile
-  { line: "MyLib.obj : error LNK2019: unresolved external symbol", sev: "Error", cat: "Build" }, // MSVC linker
+  { line: "Assets/Game/Foo.cs(12,34): error CS1002: ; expected", sev: "Error", cat: "Build", code: "CS1002" }, // Unity C# compile
+  { line: "MyLib.obj : error LNK2019: unresolved external symbol", sev: "Error", cat: "Build", code: "LNK2019" }, // MSVC linker
   { line: "SCRIPT ERROR: Invalid call in base 'Node'.", sev: "Error", cat: "Godot" }, // Godot ⚠️ unverified
   { line: "USER WARNING: deprecated API used", sev: "Warning", cat: "Godot" }, // Godot ⚠️ unverified
   { line: "   at: Player._process (res://player.gd:42)", sev: "Display", cat: "Godot", loc: "res://player.gd:42" },
@@ -122,8 +122,29 @@ const engineCases = [
 ];
 const engineOk = engineCases.every((c) => {
   const e = parseLine(c.line);
-  return e && e.severity === c.sev && (!c.cat || e.category === c.cat) && (!c.loc || e.location === c.loc);
+  return e && e.severity === c.sev && (!c.cat || e.category === c.cat) && (!c.loc || e.location === c.loc) && (!c.code || e.code === c.code);
 });
+
+// Build-warning code rollup: a noisy build with the SAME diagnostic code (C4996) on many DISTINCT
+// deprecated APIs must collapse to ONE line per code under groupBy=code, even though each message
+// (different identifiers, no numbers) is a distinct template. This is the big token win on UE/MSVC
+// builds where grep dumps every warning line. groupBy=template can't merge them; groupBy=code does.
+const deprApis = ["LegacyAlpha", "LegacyBravo", "LegacyCharlie", "LegacyDelta", "LegacyEcho", "LegacyFoxtrot", "LegacyGolf", "LegacyHotel"];
+const buildLog = deprApis
+  .map((nm, i) => `Source/Mod/File_${nm}.cpp(${120 + i},4): warning C4996: '${nm}': has been deprecated, use New${nm}() instead`)
+  .concat([
+    "Source/Mod/Net.cpp(10,2): error C2065: undeclared identifier",
+    "Source/Mod/Net.cpp(55,8): error C2065: undeclared identifier",
+    "MyLib.obj : error LNK2019: unresolved external symbol",
+  ])
+  .join("\n");
+const codeCaptured = parseLine(buildLog.split("\n")[0]).code === "C4996"; // code captured, not swallowed
+const byCode = analyzeLog(buildLog, { severityMin: "Warning", groupBy: "code" });
+const byTemplate = analyzeLog(buildLog, { severityMin: "Warning", groupBy: "template" });
+const bodyGroups = (s) => (s.match(/^(?:WARNING|ERROR|FATAL) \[/gm) || []).length;
+const codeRollupOne = /C4996: .*\(×8\)/.test(byCode); // all 8 distinct C4996 deprecations on one line
+const codeFewerGroups = bodyGroups(byCode) < bodyGroups(byTemplate); // code collapses what template can't
+const codeRollupOk = codeCaptured && codeRollupOne && codeFewerGroups;
 
 // JSONL field extraction — the JSON `Actor=(x,y,z)` inside `message` + top-level `ts` must resolve so
 // `log_fields` works on JSONL trace logs (live-verified on a real UE movement log).
@@ -147,6 +168,7 @@ const rows = [
   ["log_locate has file:line", locateHasLoc, "true", locateHasLoc],
   ["log_locate omits bodies", locateNoBodies, "true", locateNoBodies],
   ["multi-engine classify (synthetic)", engineOk, "true", engineOk],
+  ["build code rollup (groupBy=code)", codeRollupOk, "true", codeRollupOk],
   ["JSONL field extraction", jsonlOk, "true", jsonlOk],
   ["coverage hint (unknown fmt only)", covHintOk, "true", covHintOk],
   ["tail-read clean line boundary", tailOk, "true", tailOk],

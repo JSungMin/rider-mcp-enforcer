@@ -218,7 +218,7 @@ export function runTool(name, a = {}) {
             severityMin: a.severityMin || "Warning",
             category: a.category || "",
             file: a.file || "",
-            groupBy: a.groupBy === "callsite" ? "callsite" : "template",
+            groupBy: ["callsite", "code"].includes(a.groupBy) ? a.groupBy : "template",
             minDelta: Number(a.minDelta) > 0 ? Number(a.minDelta) : 1,
             maxGroups: Number(a.maxGroups) || MAX_GROUPS,
             maxLineChars: MAX_LINE_CHARS,
@@ -279,7 +279,7 @@ export function runTool(name, a = {}) {
             maxGroups: Number(a.maxGroups) || MAX_GROUPS,
             maxLineChars: MAX_LINE_CHARS,
             summaryOnly: name === "log_summary",
-            groupBy: a.groupBy === "callsite" ? "callsite" : "template",
+            groupBy: ["callsite", "code"].includes(a.groupBy) ? a.groupBy : "template",
           }) + covHint
       );
     }

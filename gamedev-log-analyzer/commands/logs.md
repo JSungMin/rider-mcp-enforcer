@@ -20,6 +20,8 @@ Steps:
    - `--severityMin Error` (errors only) | `Warning` (default).
    - `--query <substr>` · `--category <Cat>` (e.g. `LogStreaming`) · `--file <pathfrag>`.
    - `--groupBy callsite` rolls up by `file:line` (best for "which callsite floods the log").
+   - `--groupBy code` rolls up by diagnostic code (`C4996`/`LNK2019`/`CS1002` …) — collapses a noisy
+     build to one line per code (`C4996: … (×37)`); the token-cheap way to triage a build vs grepping it.
 4. **Decisive scalars (dense trace logs):** `… fields --path "<log>" --fields ts,Alpha,Pos.x,step:Pos,d:Yaw`.
    Forms: `Key`, `Key.x|.y|.z`, `Key.Y|.P|.R`, `ts`, `dts`, `d:Key`, `step:Key`. Biggest token saver on
    per-frame logs.
