@@ -41,6 +41,10 @@ scalar columns that decide the answer.
 - **`log_diff`:** compare two logs (before/after) and emit **only the delta** — new errors, errors that
   disappeared, and groups whose count changed. Unchanged groups are omitted, so a regression-triage diff
   across runs costs a fraction of re-reading either log.
+- **Enforcement (opt-out):** a `PreToolUse` hook intercepts raw Bash log dumps (`grep`/`tail`/`cat`/`rg`
+  over a `.log` / `.jsonl` / `Logs` path) and steers them here, so the token-cheap path is the default
+  instead of something you have to remember. `block` (default) denies + nudges, `warn` allows + nudges,
+  `off` disables — switch with `gamedev-log enforce <mode>` or `GDLOG_ENFORCE`.
 
 ## Supported log formats
 
@@ -82,7 +86,7 @@ node "${CLAUDE_PLUGIN_ROOT}/server/cli.js" <command> [--flags]
 
 **Commands** (`gamedev-log <command>`): `detect`, `summary`, `search`, `fields` (`--stats` for
 per-column min/max/avg/Δ), `diff`, `locate`, `tail`, `learnings`, `learnings-reset`, `savings`,
-`savings-reset`, `setup`, `config`.
+`savings-reset`, `enforce` (`block`/`warn`/`off`), `setup`, `config`.
 
 ```bash
 # Run directly too — in scripts, CI, or any agent (pure Node, no dependencies):
@@ -97,6 +101,33 @@ node server/cli.js --help
 **Jump from a log error to the source** — `locate` emits just the distinct `file:line` (no message
 bodies). If [rider-mcp-enforcer](../README.md) is installed, resolve each basename via its
 `find_files_by_name_keyword`, then `read_file` a small window at that line — never dump whole files.
+
+## Enforcement — make the token-cheap path the default
+
+Reading a log with `tail … | grep …` dumps raw lines straight into the model's context — exactly what
+this tool exists to avoid. A `PreToolUse` hook closes that gap: when a Bash command is a raw read
+(`grep`/`rg`/`ack`/`ag`/`findstr`/`tail`/`head`/`cat`) of a **log target** (`.log`, `.jsonl`, rotated
+`.log.N`, or a path under `Logs/` / `Saved/Logs/`), it is intercepted and you're pointed at the
+`gamedev-log` equivalent. Code grep (`.cpp`/`.cs`/`src/…`) and non-log reads pass through untouched —
+that domain belongs to [rider-mcp-enforcer](../README.md), which deliberately lets logs through.
+
+| Mode | Behavior |
+| --- | --- |
+| `block` *(default)* | Deny the command (exit 2) and show the `gamedev-log` equivalent. The message is a friendly nudge, but the raw read does **not** run. |
+| `warn` | Allow the command, but print the same nudge (soft). |
+| `off` | Silent passthrough — no enforcement. |
+
+```bash
+gamedev-log enforce            # show current mode + source
+gamedev-log enforce warn       # soft nudge only
+gamedev-log enforce off        # disable
+gamedev-log enforce block      # re-enable (default)
+GDLOG_ENFORCE=off <cmd>        # per-shell override (env beats config)
+```
+
+Mode is read **env `GDLOG_ENFORCE` > `~/.gamedev-log-analyzer/config.json` > default `block`**. The hook
+fails open — any parse/IO error allows the command, so it never wedges your shell. Note the hook only
+guards **Bash**; the `Read` tool is untouched (use `gamedev-log` for the token win on big logs).
 
 ## Optional: enable the MCP server
 The same engine ([`server/logs.js`](server/logs.js) + [`server/core.js`](server/core.js)) also runs as

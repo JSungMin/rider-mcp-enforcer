@@ -62,6 +62,10 @@ Quote every path argument (Windows paths/spaces). `--help` lists everything.
   (new-parser candidates). See *Growing format coverage* below; a low-coverage file also auto-nudges.
 - `savings` / `savings-reset` — local cumulative report of how many tokens you've saved vs dumping raw
   logs into context. Each analysis also appends a one-line `✓ Saved ~N tokens (M× smaller)` for big logs.
+- `enforce <block|warn|off>` (or no arg = status) — Bash log-grep enforcement. A `PreToolUse` hook
+  intercepts raw log reads (`grep`/`tail`/`cat`/… over `.log`/`.jsonl`/`Logs`) and steers them here.
+  `block` (default) denies + nudges; `warn` allows + nudges; `off` disables. Env: `GDLOG_ENFORCE`. If a
+  user hits the block and genuinely wants raw bytes, tell them `gamedev-log enforce warn|off`.
 
 ## Default flow ("check the logs")
 

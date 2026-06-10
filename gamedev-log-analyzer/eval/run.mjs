@@ -8,6 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import { analyzeLog, extractFields, parseLine, diffLogs, locateLog, readText } from "../server/logs.js";
 import { runTool } from "../server/core.js";
+import { shouldBlockLogBash, normalizeMode } from "../server/enforce.js";
 
 // Deterministic synthetic UE-style log (generic names only).
 function makeLog(n) {
@@ -155,6 +156,25 @@ const jsonlLog = [
 const jsonlOut = extractFields(jsonlLog, { fields: ["ts", "Actor.x", "Vel", "step:Actor"], category: "Pos", severityMin: "Display", max: 10 });
 const jsonlOk = /(^|\n)100\t10\.0\t400\t/.test(jsonlOut) && /\t5\.00$/.test(jsonlOut); // step = hypot(3,4)=5.00
 
+// Log-grep enforcement: the PreToolUse hook must catch raw Bash log reads (grep/tail/cat over
+// .log/.jsonl/Logs) and steer them to gamedev-log, while leaving code grep and non-log reads alone.
+const enfCases = [
+  ["tail -3 Saved/Logs/Editor.log | grep -cE error", true], // the exact incident pattern
+  ["grep -i warning build.log", true],
+  ["cat crash.jsonl", true],
+  ["rg pattern G:/Proj/Saved/Logs/run.log", true],
+  ["grep TODO src/Foo.cpp", false], // code file, not a log
+  ["node server/cli.js search --path x.log", false], // analyzer's own call (node, not a read exec)
+  ["head -20 notes.txt", false], // txt is not a log
+  ["ls Logs/", false], // ls is not a read-exec
+];
+const enforceClassifyOk = enfCases.every(([c, exp]) => shouldBlockLogBash(c) === exp);
+const enforceModeOk =
+  normalizeMode("on") === "block" && normalizeMode("0") === "off" &&
+  normalizeMode("nudge") === "warn" && normalizeMode("bogus") === null;
+const enforceStatusOk = /Log-grep enforcement: (block|warn|off)/.test(runTool("log_enforce", {}).text);
+const enforceOk = enforceClassifyOk && enforceModeOk && enforceStatusOk;
+
 const rows = [
   ["parse coverage", (coverage * 100).toFixed(1) + "%", "≥ 95%", coverage >= 0.95],
   ["token reduction (callsite)", (reduction * 100).toFixed(1) + "%", "≥ 90%", reduction >= 0.9],
@@ -169,6 +189,7 @@ const rows = [
   ["log_locate omits bodies", locateNoBodies, "true", locateNoBodies],
   ["multi-engine classify (synthetic)", engineOk, "true", engineOk],
   ["build code rollup (groupBy=code)", codeRollupOk, "true", codeRollupOk],
+  ["log-grep enforce classify+mode", enforceOk, "true", enforceOk],
   ["JSONL field extraction", jsonlOk, "true", jsonlOk],
   ["coverage hint (unknown fmt only)", covHintOk, "true", covHintOk],
   ["tail-read clean line boundary", tailOk, "true", tailOk],
