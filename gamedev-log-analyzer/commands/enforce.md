@@ -24,9 +24,9 @@ node "${CLAUDE_PLUGIN_ROOT}/server/cli.js" enforce block      # re-enable (defau
 ```
 
 Modes:
-- **block** *(default)* — deny the raw read (exit 2) and show the `gamedev-log` equivalent. Friendly
-  message, but the command does **not** run.
-- **warn** — allow the command, print the same nudge (soft).
+- **warn** *(default)* — allow the command, but inject the `gamedev-log` equivalent into the model's
+  context as a nudge. Steers without friction.
+- **block** — deny the raw read (exit 2) and show the nudge — the command does **not** run. Opt-in.
 - **off** — silent passthrough, no enforcement.
 
 Mode precedence: env **`GDLOG_ENFORCE`** > `~/.gamedev-log-analyzer/config.json` (`"enforce"`) > default

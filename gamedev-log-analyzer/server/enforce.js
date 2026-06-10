@@ -155,12 +155,15 @@ export function normalizeMode(v) {
   return null;
 }
 
+// Default is "warn": nudge toward the analyzer but never deny. The hard-block guarantee was always
+// porous (the Grep tool / MCP search / Read bypass enforcement entirely), so paying friction for it
+// violated token-first. Opt into hard denial with `gamedev-log enforce block` / GDLOG_ENFORCE=block.
 export function enforceMode() {
   const env = process.env.GDLOG_ENFORCE;
-  if (env !== undefined && env !== "") return normalizeMode(env) || "block";
+  if (env !== undefined && env !== "") return normalizeMode(env) || "warn";
   const fromCfg = readConfig().enforce;
-  if (fromCfg !== undefined && fromCfg !== null && fromCfg !== "") return normalizeMode(fromCfg) || "block";
-  return "block"; // default: actually enforce
+  if (fromCfg !== undefined && fromCfg !== null && fromCfg !== "") return normalizeMode(fromCfg) || "warn";
+  return "warn"; // default: nudge, don't deny
 }
 
 export function enforceSource() {

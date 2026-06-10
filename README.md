@@ -22,9 +22,10 @@
 
 ### What it looks like
 ```text
-# Claude tries to grep code → the hook blocks it and redirects:
+# Claude tries to grep code → the hook nudges it toward the Rider index (default `warn`):
 $ grep -rn "AMyActor" Source/**/*.cpp
-⛔ [rider-mcp-enforcer] Blocked a code-symbol search. Use search_symbol / search_text instead.
+💡 [rider-mcp-enforcer] Heads-up: a code-symbol search via Bash. Prefer search_symbol / search_text
+   (or the `code-locator` subagent).   # RIDER_ENFORCE=block to hard-deny instead
 
 ▶ search_symbol "AMyActor"
   Source/Game/MyActor.h:42   class MYGAME_API AMyActor : public APawn   (+3 more)
@@ -101,7 +102,8 @@ actually use them instead of grep:
 
 | Layer | File | Effect |
 | --- | --- | --- |
-| **Enforcement hook** | `hooks/block-code-grep.js` | Blocks Bash `grep`/`rg`/`find -name` over source files and redirects Claude to the Rider MCP tools. Non-code text searches (logs, md, json) pass through. Set `RIDER_ENFORCE=0` to disable. |
+| **Enforcement hook** | `hooks/block-code-grep.js` | Intercepts Bash `grep`/`rg`/`find -name` over source files and steers Claude to the Rider MCP tools. **Default `warn`**: the command runs but a nudge is injected into the model's context (the hard-block guarantee was always porous — the Grep tool / MCP search / Read bypass it). Set `RIDER_ENFORCE=block` for hard denial, `RIDER_ENFORCE=0` to disable. Non-code text (logs, md, json) passes through. |
+| **`code-locator` subagent** | `agents/code-locator.md` | Delegate "where is X / what calls Y / find file W" to a context-isolated subagent that uses Rider's index internally and returns only a compact `file:line` table — the raw matches never enter your context. The accuracy + token win without any hook friction. |
 | **Routing skill** | `skills/rider-search/SKILL.md` | Karpathy-style rules: symbol/file/text lookups → Rider tools first; grep is last resort. |
 | **Summarizing proxy** | `proxy/` | An MCP server fronting Rider's MCP. Parses the JSON search responses (`{items:[{filePath,startLine,lineText}],more}`) into compact `path:line  text`, capped at `RIDER_MAX_RESULTS`, and injects a default `projectPath`. Stops large-codebase result floods from blowing up context. |
 
