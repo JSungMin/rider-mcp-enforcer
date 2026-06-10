@@ -38,6 +38,10 @@ Unity `Editor.log`는 보통 수십 MB의 반복 스팸이라 `cat`/`grep`하면
   `Key.Y|.P|.R`, `ts`, `dts`, `d:Key`, `step:Key`).
 - **`log_diff`:** 두 로그 비교 후 **델타만**(신규/사라짐/카운트변경, 변경없는 그룹 생략).
 - **`log_locate`:** 매칭 엔트리의 distinct `file:line` 점프 리스트(소스 열기용).
+- **강제(enforcement, opt-out):** `PreToolUse` 훅이 Bash 생(raw) 로그 덤프(`grep`/`tail`/`cat`/`rg`
+  로 `.log`/`.jsonl`/`Logs` 대상)를 가로채 이 도구로 유도 — 토큰 절약 경로가 기본이 됨.
+  `block`(기본)=차단+안내, `warn`=허용+안내, `off`=해제. `gamedev-log enforce <mode>` 또는
+  `GDLOG_ENFORCE`로 전환.
 
 ## 지원 로그 포맷
 
@@ -76,7 +80,33 @@ node "${CLAUDE_PLUGIN_ROOT}/server/cli.js" <command> [--flags]
 
 **명령어**(`gamedev-log <command>`): `detect`, `summary`, `search`, `fields`(`--stats`로 컬럼별
 min/max/avg/Δ), `diff`, `locate`, `tail`, `learnings`, `learnings-reset`, `savings`, `savings-reset`,
-`setup`, `config`.
+`enforce`(`block`/`warn`/`off`), `setup`, `config`.
+
+## 강제(enforcement) — 토큰 절약 경로를 기본으로
+
+`tail … | grep …`으로 로그를 읽으면 생 라인이 그대로 모델 컨텍스트에 쏟아짐 — 이 도구가 막으려는 바로
+그것. `PreToolUse` 훅이 그 갭을 닫음: Bash 명령이 **로그 대상**(`.log`/`.jsonl`/회전된 `.log.N`/`Logs`·
+`Saved/Logs` 경로)에 대한 생 읽기(`grep`/`rg`/`ack`/`ag`/`findstr`/`tail`/`head`/`cat`)면 가로채 동등한
+`gamedev-log`로 안내. 코드 grep(`.cpp`/`.cs`/`src/…`)·비로그 읽기는 통과 — 그 도메인은
+[rider-mcp-enforcer](../README.md) 담당(로그는 일부러 통과시킴).
+
+| 모드 | 동작 |
+| --- | --- |
+| `block` *(기본)* | 명령 차단(exit 2) + `gamedev-log` 대안 안내. 메시지는 친절하지만 생 읽기는 **실행 안 됨**. |
+| `warn` | 명령 허용 + 동일 안내(soft). |
+| `off` | 조용히 통과 — 강제 없음. |
+
+```bash
+gamedev-log enforce            # 현재 모드+출처 표시
+gamedev-log enforce warn       # soft 안내만
+gamedev-log enforce off        # 해제
+gamedev-log enforce block      # 재활성(기본)
+GDLOG_ENFORCE=off <cmd>        # 셸 단위 오버라이드(env가 config보다 우선)
+```
+
+모드 읽기 순서: **env `GDLOG_ENFORCE` > `~/.gamedev-log-analyzer/config.json` > 기본 `block`**. 훅은
+fail-open — 파싱/IO 오류 시 명령 허용(셸을 막지 않음). 훅은 **Bash만** 감시 — `Read` 도구는 건드리지
+않음(큰 로그는 `gamedev-log`로 토큰 절약).
 
 ```bash
 # 직접 실행도 가능 — 스크립트/CI/임의 에이전트에서 (순수 Node, 의존성 0):
