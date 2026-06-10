@@ -33,7 +33,7 @@ process.stdin.on("end", () => {
     process.exit(0); // unparseable — don't block
   }
 
-  let mode = "block";
+  let mode = "warn"; // matches enforceMode()'s actual default; only used if enforceMode() throws (then we fail open below)
   try {
     mode = enforceMode();
   } catch {
