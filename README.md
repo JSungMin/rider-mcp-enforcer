@@ -9,9 +9,9 @@
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/JSungMin/rider-mcp-enforcer/pulls)
 [![Stars](https://img.shields.io/github/stars/JSungMin/rider-mcp-enforcer?style=social)](https://github.com/JSungMin/rider-mcp-enforcer/stargazers)
 
-> **Read big things cheaply.** A two-plugin Claude Code marketplace for large **Unreal C++ /
-> Unity / .NET** projects: search the codebase through **Rider's index** instead of `grep`, and
-> analyze **tens-of-MB editor logs** — both at **~99% fewer tokens**.
+> Two Claude Code plugins for large Unreal C++, Unity, and .NET projects. Search the codebase through
+> Rider's index instead of `grep`, and read tens-of-MB editor logs without dumping them into the
+> conversation. Both cost about 99% fewer tokens than the naive approach.
 
 ### Demo
 
@@ -40,10 +40,10 @@ $ grep -rn "AMyActor" Source/**/*.cpp
 ```
 <sub>Illustrative output with placeholder symbols.</sub>
 
-### Is this you?
-- 🔍 **`grep` floods your context** on a giant Unreal C++ repo → search via Rider's index, token-capped (**~99% fewer tokens** — see [benchmarks](#combined-token-savings-measured)).
-- 🪵 **A 50 MB editor log is unreadable** → parse, deduplicate, and classify it down to **~2,500 tokens**.
-- 🤖 **Claude keeps `grep`-ing code** → a hook automatically **redirects it to the Rider tools**.
+### Sound familiar?
+- `grep` on a giant Unreal C++ repo floods the context. Searching through Rider's index instead stays token-capped, around 99% smaller ([benchmarks](#combined-token-savings-measured)).
+- A 50 MB editor log is unreadable as-is. Parsing, deduplicating, and classifying it brings it down to about 2,500 tokens.
+- Claude keeps reaching for `grep` on code. A hook catches that and points it at the Rider tools.
 
 ### Contents
 - [Marketplace — two plugins](#marketplace--two-plugins) · [Combined savings](#combined-token-savings-measured) · [Using both together](#using-both-together)
@@ -53,25 +53,23 @@ $ grep -rn "AMyActor" Source/**/*.cpp
 
 ---
 
-A **Claude Code plugin** that makes Claude do symbol search, find-usages, file search, and
-function/variable navigation through **JetBrains Rider's live index** instead of Bash `grep` —
-and *enforces* it, while capping the tokens a find-usages flood can spend.
-
-Built for large **Unreal C++ (Rider for Unreal)** and **.NET/C#** codebases, where `grep` is slow
-and burns context.
+A Claude Code plugin that routes symbol search, find-usages, file search, and function/variable
+navigation through JetBrains Rider's live index instead of Bash `grep`, and caps the tokens a
+find-usages flood can spend. It's built for large Unreal C++ (Rider for Unreal) and .NET/C# codebases,
+where `grep` is slow and burns context.
 
 ## Marketplace — two plugins
 
-This repo is a Claude Code **plugin marketplace** with two installable plugins that share one idea —
-**read big things cheaply**:
+This repo is a Claude Code plugin marketplace. It holds two plugins built around the same goal: read
+big things without paying for all of it in tokens.
 
 | Plugin | Does | Needs |
 | --- | --- | --- |
 | **rider-mcp-enforcer** (this page) | Steer code search to Rider's MCP symbol/reference/file tools over Bash grep (nudge by default, hard-block opt-in), token-capped | Rider running + MCP |
 | **[gamedev-log-analyzer](gamedev-log-analyzer/README.md)** | Parse/dedup/classify huge Unreal/Unity/Godot/MSVC-UBT-MSBuild logs (CLI-first), search + diff + locate + extract scalars | Node only (no IDE) |
 
-**One-step install** — `rider-mcp-enforcer` declares `gamedev-log-analyzer` as a dependency, so installing
-it pulls in both, and each server's `npm install` runs automatically on first session (no manual setup):
+One-step install: `rider-mcp-enforcer` declares `gamedev-log-analyzer` as a dependency, so installing it
+pulls in both. Each server's `npm install` runs on the first session, so there's no manual setup:
 ```bash
 /plugin marketplace add JSungMin/rider-mcp-enforcer
 /plugin install rider-mcp-enforcer@rider-mcp-enforcer   # also auto-installs gamedev-log-analyzer
@@ -107,26 +105,25 @@ actually use them instead of grep:
 | **Routing skill** | `skills/rider-search/SKILL.md` | Karpathy-style rules: symbol/file/text lookups → Rider tools first; grep is last resort. |
 | **Summarizing proxy** | `proxy/` | An MCP server fronting Rider's MCP. Parses the JSON search responses (`{items:[{filePath,startLine,lineText}],more}`) into compact `path:line  text`, capped at `RIDER_MAX_RESULTS`, and injects a default `projectPath`. Stops large-codebase result floods from blowing up context. |
 
-> Honest scope: Rider's MCP alone already gives you symbol/file search. This plugin's value is
-> **enforcement + token control + projectPath ergonomics** on top of it.
+> To be clear about scope: Rider's MCP already does symbol and file search on its own. What this plugin
+> adds on top is the enforcement, the token cap, and the projectPath handling.
 
-### Subagents — delegate the work, keep your context clean
+### Subagents
 
-Both plugins ship a **context-isolated subagent**. Instead of the hook *nudging* you, you (or Claude,
-automatically) hand the whole task to a subagent that does the raw reading/searching in **its own
-throwaway context** and returns **only the compressed conclusion** — the raw log lines or source
-matches never enter your main context. This is the bypass-proof token win (a separate context, not a
-gate) and usually the *most accurate* path because the subagent is single-purpose.
+Each plugin also ships a subagent you can hand a whole task to. It does the reading or searching in its
+own separate context and returns only the answer, so the raw log lines or source matches never land in
+your main context. Since that context is separate rather than a gate the way the hook is, nothing slips
+past it, and a single-purpose agent usually beats the main session for accuracy.
 
 | Subagent | Use it for | Returns |
 | --- | --- | --- |
-| **`gamedev-log-analyzer:log-analyst`** | "analyze this log", "what errors/warnings", "what changed", "track this scalar", "which warnings by code" | A compact severity/dedup/code-rollup/`file:line` answer — never raw log lines |
-| **`rider-mcp-enforcer:code-locator`** | "where is X defined", "what calls Y", "all usages of Z", "find file W" (C#/.NET or Unreal C++ in Rider) | A tight `kind name @ file:line` table — never source bodies |
+| `gamedev-log-analyzer:log-analyst` | "analyze this log", "what errors/warnings", "what changed", "track this scalar", "which warnings by code" | A compact severity / dedup / code-rollup / `file:line` answer (no raw log lines) |
+| `rider-mcp-enforcer:code-locator` | "where is X defined", "what calls Y", "all usages of Z", "find file W" (C#/.NET or Unreal C++ in Rider) | A tight `kind name @ file:line` table (no source bodies) |
 
-**How to use:** just ask naturally — "analyze `Editor.log`" or "find usages of `AMyActor`" — and Claude
-delegates automatically (the agents auto-route by description). Or invoke one explicitly by its
-namespaced name. A 3,000-line log comes back as ~300 tokens; a codebase-wide search as a few dozen
-`file:line` rows. `code-locator` needs Rider's MCP connected; `log-analyst` needs nothing (pure CLI).
+You don't invoke them by hand. Ask "analyze `Editor.log`" or "find usages of `AMyActor`" and Claude
+picks the right one from its description; naming it explicitly also works. A 3,000-line log comes back
+as roughly 300 tokens, a repo-wide search as a few dozen `file:line` rows. `code-locator` needs Rider's
+MCP connected; `log-analyst` runs on Node alone.
 
 ### Commands & tools
 - `/rider-mcp-enforcer:setup` — configure the plugin (see [Setup](#setup--configuration-command)).
@@ -150,12 +147,14 @@ vs this plugin. No project source is reproduced; see [BENCHMARK.md](BENCHMARK.md
 | Tokens to the model | ~195,600 | ~114,100 | **~1,700** |
 | Wall time | 55,006 ms | 382 ms | **~870 ms** |
 
-- **Tokens: ~98–99% fewer (~67–115×)** — always. ~87% from response summarization, the rest from capping.
-- **Time: ~63× faster** when grep would scan the whole repo (incl. Engine); slightly slower than a
-  pre-narrowed grep (MCP has fixed SSE round-trip overhead, ripgrep is very fast on a small scope).
+- Tokens: 98–99% fewer (67–115×), every time. About 87% of that comes from summarizing the response,
+  the rest from the cap.
+- Time: ~63× faster when grep would otherwise scan the whole repo, Engine included. It runs a little
+  slower than a grep you've already narrowed, since the MCP call carries a fixed SSE round-trip and
+  ripgrep is very fast on a small scope.
 
 ### Accuracy difference (and why)
-It's a **precision/recall trade**, not "one is more correct":
+This is a precision/recall trade-off, not a case of one being more correct than the other:
 - **Recall:** the plugin returns the top `N` (cap), not all 2,400+ hits. The withheld ~98% are mostly
   comments/includes/substring noise. Need an exhaustive list? Raise `RIDER_MAX_RESULTS` or use grep.
 - **Precision:** grep matches every substring (a `Foo` query also hits `FooBar`), over-reporting ~100×
@@ -164,12 +163,12 @@ It's a **precision/recall trade**, not "one is more correct":
   declaration (Rider indexing limit). `search_text` gives the real `file:line  code`; the skill tells
   Claude to prefer it when a symbol hit looks off.
 
-> Net: for navigation (definition + representative usages) the plugin is more accurate **and** far
-> cheaper; for an exhaustive occurrence audit, raise the cap or use grep on purpose.
+> So: for navigation (a definition plus representative usages) the plugin is both more accurate and far
+> cheaper. For an exhaustive occurrence audit, raise the cap or fall back to grep on purpose.
 
 ### Incomplete results (correctness guard)
-Capping is good for tokens but dangerous for "find ALL references" — a missed call site means wrong
-code. So truncation is **never silent**:
+Capping saves tokens but it's dangerous for "find ALL references", where a missed call site means
+wrong code. So truncation is never silent:
 
 1. When the first fetch looks truncated, the proxy **auto-retries once** with a larger limit
    (`RIDER_ESCALATE_LIMIT`) to learn the true count.
@@ -299,10 +298,10 @@ Check what's installed with `/plugin` (it lists each plugin's version). If a com
 - The **skill** biases Claude toward the Rider tools proactively.
 - The **proxy** guarantees the token cap regardless of how Claude calls the tool.
 
-## Enable Rider MCP (do this first — it is OFF until you enable it)
+## Enable Rider MCP first (it's off until you turn it on)
 
-The Rider MCP server is **not active by default in every build/setup** — many users have it disabled
-and see the plugin "do nothing useful." Enable and locate it:
+The Rider MCP server isn't active by default in every build, and a lot of people have it disabled
+without realizing it, which makes the plugin look like it does nothing. Turn it on and find its URL:
 
 1. Rider → **Settings | Tools | MCP Server**.
 2. Tick **Enable MCP Server**. (If you don't see this page, update to Rider **2025.2+**.)
@@ -354,7 +353,7 @@ Rider — MCP is off or the URL is wrong.
 
 ## Permissions & safety
 
-Everything runs **locally**; nothing is uploaded. Concretely:
+Everything runs locally and nothing is uploaded:
 
 - The **hook** (`PreToolUse` on Bash) only inspects the command string to decide whether to redirect a
   code-grep to Rider — it does not read file contents or run anything. It honors `RIDER_ENFORCE=0`.
@@ -375,11 +374,11 @@ Maintenance), generated automatically. The badge at the top always points at the
 
 Issues and PRs welcome — bug reports, new log formats/engines, additional Rider tool mappings, or docs.
 
-This repo is maintained with **AI-assisted review**, so PRs are judged from the diff + description +
-evidence: keep them **small, clearly described, evidenced, and free of any proprietary data**. Please
-read **[CONTRIBUTING.md](CONTRIBUTING.md)** before opening a PR.
+This repo is maintained with AI-assisted review, so PRs are judged from the diff, description, and
+evidence. Keep them small, clearly described, backed by evidence, and free of any proprietary data.
+Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a PR.
 
-**⭐ If this saved you tokens or debugging time, a star helps others find it.**
+If this saved you tokens or debugging time, a star helps others find it. ⭐
 
 ## Privacy
 

@@ -9,9 +9,10 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](../LICENSE)
 [![Stars](https://img.shields.io/github/stars/JSungMin/rider-mcp-enforcer?style=social)](https://github.com/JSungMin/rider-mcp-enforcer/stargazers)
 
-거대한 에디터 로그를 **토큰 효율적으로** 읽는 **Claude Code 플러그인**. Unreal `Saved/Logs/*.log`,
-Unity `Editor.log`는 보통 수십 MB의 반복 스팸이라 `cat`/`grep`하면 컨텍스트가 터집니다. 이 플러그인은
-대신 파싱·**중복제거(dedup)**·분류합니다. **IDE 불필요** — 순수 파일 파싱.
+거대한 에디터 로그를 컨텍스트를 터뜨리지 않고 읽는 Claude Code 플러그인입니다. Unreal
+`Saved/Logs/*.log`나 Unity `Editor.log`는 보통 수십 MB짜리 반복 스팸이라, `cat`이나 `grep`으로 열면
+그게 전부 대화로 쏟아집니다. 이 플러그인은 로그를 대신 파싱하고 중복을 제거하고 분류합니다. IDE는
+필요 없고, 순수 파일 파싱입니다.
 
 ## 왜 빠른가 (실측)
 
@@ -83,26 +84,26 @@ node "${CLAUDE_PLUGIN_ROOT}/server/cli.js" <command> [--flags]
 min/max/avg/Δ), `diff`, `locate`, `tail`, `learnings`, `learnings-reset`, `savings`, `savings-reset`,
 `enforce`(`block`/`warn`/`off`), `setup`, `config`.
 
-## `log-analyst` 서브에이전트에 위임 (가장 깔끔)
+## `log-analyst` 서브에이전트
 
-플러그인은 **컨텍스트 격리 서브에이전트** `gamedev-log-analyzer:log-analyst`를 제공합니다. CLI를 내
-컨텍스트에서 돌리는 대신 작업 전체를 넘기면, **자기 버려지는 컨텍스트**에서 파싱/읽기를 하고
-**압축 답만** 반환 — raw 로그 줄이 메인 컨텍스트에 안 들어옵니다. 수십 MB 로그도 수백 토큰으로 끝나고
-작업 세트도 작게 유지됩니다.
+플러그인은 `gamedev-log-analyzer:log-analyst` 서브에이전트를 제공합니다. CLI를 내 컨텍스트에서 돌리는
+대신 작업을 통째로 넘기면, 서브에이전트가 자기 컨텍스트에서 파싱과 읽기를 하고 답만 돌려줍니다. raw
+로그 줄이 메인 컨텍스트에 들어오지 않으므로, 수십 MB 로그도 수백 토큰으로 끝나고 작업 세트도 작게
+유지됩니다.
 
-그냥 자연스럽게 물으면 Claude가 description으로 **자동 위임**:
+그냥 자연스럽게 물으면 Claude가 description을 보고 알아서 위임합니다:
 
 > "`…/Saved/Logs/Editor.log` 분석해줘 — 주요 에러/경고, 빌드 경고는 코드별로 묶어서"
 
-…또는 `gamedev-log-analyst`로 명시 호출. 알맞은 명령(`summary`/`search`/`diff`/`locate`/`fields`/
-`--groupBy code`)을 골라 실행하고, dedup된 severity 그림 + 열어볼 `file:line`만 답합니다 — raw 덤프
-없음. Node만 있으면 됨(CLI를 셸 호출). 가장 정확하고 토큰도 가장 적은 경로이며, 아래 강제 훅은 raw
-`grep`/`Read`가 새어나갈 때를 위한 폴백입니다.
+`gamedev-log-analyst`로 직접 부를 수도 있습니다. 알맞은 명령(`summary`/`search`/`diff`/`locate`/
+`fields`/`--groupBy code`)을 골라 실행하고, dedup된 severity 그림과 열어볼 `file:line`만 답합니다.
+raw 덤프는 없습니다. Node만 있으면 됩니다(CLI를 셸 호출). 아래 강제 훅은 raw `grep`이나 `Read`가
+새어나갈 때를 위한 폴백입니다.
 
-## 강제(enforcement) — 토큰 절약 경로를 기본으로
+## 강제(enforcement)
 
-`tail … | grep …`으로 — 또는 `Read` 도구로 대용량 로그를 열면 — 생 라인이 그대로 모델 컨텍스트에
-쏟아짐. `PreToolUse` 훅이 두 갭을 닫음:
+`tail … | grep …`으로, 또는 `Read` 도구로 대용량 로그를 열면 생 라인이 그대로 컨텍스트에 쏟아집니다.
+`PreToolUse` 훅이 두 경로를 모두 막습니다:
 
 - **Bash**: **로그 대상**(`.log`/`.jsonl`/회전된 `.log.N`/`Logs`·`Saved/Logs` 경로)에 대한 **무제한**
   읽기(`cat`, 맨 `grep`/`rg`, `tail -f`, `tail -n +N`, 큰 `tail -n N`)를 가로챔 — 경로가 셸 변수에

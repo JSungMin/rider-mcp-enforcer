@@ -9,9 +9,10 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](../LICENSE)
 [![Stars](https://img.shields.io/github/stars/JSungMin/rider-mcp-enforcer?style=social)](https://github.com/JSungMin/rider-mcp-enforcer/stargazers)
 
-A **Claude Code plugin** that reads huge editor logs **token-efficiently**. Unreal `Saved/Logs/*.log`
-and Unity `Editor.log` are often tens of MB of repeated spam — `cat`/`grep` floods the context. This
-plugin parses, **deduplicates**, and classifies them instead. **No IDE required** — pure file parsing.
+A Claude Code plugin that reads huge editor logs without blowing up the context. Unreal
+`Saved/Logs/*.log` and Unity `Editor.log` are often tens of MB of repeated spam, and `cat`/`grep` dumps
+all of it into the conversation. This plugin parses, deduplicates, and classifies the log instead. No
+IDE needed; it's pure file parsing.
 
 ## Why it's fast (measured)
 
@@ -23,8 +24,8 @@ Real numbers on a live Unreal log (no project source reproduced):
 | Search one trace tag (9,226 hits) | ~690,000 tok | ~1,700 tok (callsite rollup) | **~99.8% (~410×)** |
 | Pull decisive scalars from a window | ~35,000 tok (raw dump) | ~160 tok (`log_fields`) | **~99.5%** |
 
-The win: never put raw log lines in context — emit deduped groups, a callsite rollup, or just the
-scalar columns that decide the answer.
+The idea is simple: never put raw log lines in the context. Emit deduped groups, a callsite rollup, or
+just the scalar columns that actually decide the answer.
 
 ## What it does
 
@@ -41,12 +42,12 @@ scalar columns that decide the answer.
 - **`log_diff`:** compare two logs (before/after) and emit **only the delta** — new errors, errors that
   disappeared, and groups whose count changed. Unchanged groups are omitted, so a regression-triage diff
   across runs costs a fraction of re-reading either log.
-- **Enforcement (opt-out):** a `PreToolUse` hook intercepts raw Bash log dumps (`grep`/`tail`/`cat`/`rg`
-  over a `.log` / `.jsonl` / `Logs` path) **and unbounded `Read`s of large (≥ 200 KB) log files**, and
-  steers them here — so the token-cheap path is the default instead of something you have to remember. A
-  sliced `Read` (`offset`/`limit`) always passes, so it never strands you. `warn` (default) allows +
-  nudges, `block` denies + nudges, `off` disables — switch with `gamedev-log enforce <mode>` or `GDLOG_ENFORCE`.
-  For hands-off, context-isolated analysis you can also delegate to the **`log-analyst`** subagent.
+- **Enforcement (opt-out):** a `PreToolUse` hook catches raw Bash log dumps (`grep`/`tail`/`cat`/`rg`
+  over a `.log`/`.jsonl`/`Logs` path) and unbounded `Read`s of large (≥ 200 KB) logs, and points them
+  here, so the cheap path is the default rather than something you have to remember. A sliced `Read`
+  (`offset`/`limit`) always goes through. `warn` (the default) runs the command and nudges, `block`
+  denies it, `off` turns the hook off; switch with `gamedev-log enforce <mode>` or `GDLOG_ENFORCE`. You
+  can also hand the whole job to the `log-analyst` subagent.
 
 ## Supported log formats
 
@@ -100,32 +101,31 @@ node server/cli.js locate --path Editor.log --severityMin Error --basename
 node server/cli.js --help
 ```
 
-**Jump from a log error to the source** — `locate` emits just the distinct `file:line` (no message
+To jump from a log error to its source, `locate` emits just the distinct `file:line` (no message
 bodies). If [rider-mcp-enforcer](../README.md) is installed, resolve each basename via its
-`find_files_by_name_keyword`, then `read_file` a small window at that line — never dump whole files.
+`find_files_by_name_keyword`, then `read_file` a small window at that line instead of dumping whole files.
 
-## Delegate to the `log-analyst` subagent (cleanest)
+## The `log-analyst` subagent
 
-The plugin ships a **context-isolated subagent**, `gamedev-log-analyzer:log-analyst`. Instead of
-running the CLI in your own context, hand it the whole task — it does the parsing/reading in **its own
-throwaway context** and returns **only the compressed answer**. The raw log lines never reach your main
-context, so a multi-MB log costs you a few hundred tokens *and* the working set stays small.
+The plugin ships a subagent, `gamedev-log-analyzer:log-analyst`. Rather than run the CLI in your own
+context, hand it the task and let it do the parsing in a separate context, returning only the answer.
+The raw log lines never reach your main context, so a multi-MB log costs a few hundred tokens and your
+working set stays small.
 
-Just ask naturally and Claude delegates automatically (the agent auto-routes by description):
+Ask for it in plain language and Claude routes to it from the agent's description:
 
 > "analyze `…/Saved/Logs/Editor.log` — top errors and warnings, and roll the build warnings up by code"
 
-…or invoke it explicitly as `gamedev-log-analyst`. It picks the right command (`summary`/`search`/
-`diff`/`locate`/`fields`/`--groupBy code`), runs it, and replies with a deduped severity picture +
-the `file:line`s worth opening — never a raw dump. Needs nothing but Node (it shells out to the CLI).
-This is the most accurate and most token-frugal path; the enforcement hook below is the fallback for
-when a raw `grep`/`Read` slips through.
+You can also name it directly. It picks the right command (`summary`/`search`/`diff`/`locate`/`fields`/
+`--groupBy code`), runs it, and replies with a deduped severity picture and the `file:line`s worth
+opening, not a raw dump. It only needs Node, since it shells out to the CLI. The enforcement hook below
+is the fallback for when a raw `grep` or `Read` slips through.
 
-## Enforcement — make the token-cheap path the default
+## Enforcement
 
-Reading a log with `tail … | grep …` — or opening a multi-MB log with the `Read` tool — dumps raw
-lines straight into the model's context, exactly what this tool exists to avoid. A `PreToolUse` hook
-closes both gaps:
+Reading a log with `tail … | grep …`, or opening a multi-MB log with the `Read` tool, dumps raw lines
+straight into the context, which is exactly what this plugin exists to avoid. A `PreToolUse` hook closes
+both gaps:
 
 - **Bash**: an **unbounded** read (`cat`, a bare `grep`/`rg`, `tail -f`, `tail -n +N`, or a large
   `tail -n N`) of a **log target** (`.log`, `.jsonl`, rotated `.log.N`, or a path under `Logs/` /
