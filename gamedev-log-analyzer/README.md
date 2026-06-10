@@ -104,6 +104,23 @@ node server/cli.js --help
 bodies). If [rider-mcp-enforcer](../README.md) is installed, resolve each basename via its
 `find_files_by_name_keyword`, then `read_file` a small window at that line — never dump whole files.
 
+## Delegate to the `log-analyst` subagent (cleanest)
+
+The plugin ships a **context-isolated subagent**, `gamedev-log-analyzer:log-analyst`. Instead of
+running the CLI in your own context, hand it the whole task — it does the parsing/reading in **its own
+throwaway context** and returns **only the compressed answer**. The raw log lines never reach your main
+context, so a multi-MB log costs you a few hundred tokens *and* the working set stays small.
+
+Just ask naturally and Claude delegates automatically (the agent auto-routes by description):
+
+> "analyze `…/Saved/Logs/Editor.log` — top errors and warnings, and roll the build warnings up by code"
+
+…or invoke it explicitly as `gamedev-log-analyst`. It picks the right command (`summary`/`search`/
+`diff`/`locate`/`fields`/`--groupBy code`), runs it, and replies with a deduped severity picture +
+the `file:line`s worth opening — never a raw dump. Needs nothing but Node (it shells out to the CLI).
+This is the most accurate and most token-frugal path; the enforcement hook below is the fallback for
+when a raw `grep`/`Read` slips through.
+
 ## Enforcement — make the token-cheap path the default
 
 Reading a log with `tail … | grep …` — or opening a multi-MB log with the `Read` tool — dumps raw

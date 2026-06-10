@@ -67,7 +67,7 @@ This repo is a Claude Code **plugin marketplace** with two installable plugins t
 
 | Plugin | Does | Needs |
 | --- | --- | --- |
-| **rider-mcp-enforcer** (this page) | Force Rider's MCP symbol/reference/file search over Bash grep, token-capped | Rider running + MCP |
+| **rider-mcp-enforcer** (this page) | Steer code search to Rider's MCP symbol/reference/file tools over Bash grep (nudge by default, hard-block opt-in), token-capped | Rider running + MCP |
 | **[gamedev-log-analyzer](gamedev-log-analyzer/README.md)** | Parse/dedup/classify huge Unreal/Unity/Godot/MSVC-UBT-MSBuild logs (CLI-first), search + diff + locate + extract scalars | Node only (no IDE) |
 
 **One-step install** — `rider-mcp-enforcer` declares `gamedev-log-analyzer` as a dependency, so installing
@@ -109,6 +109,24 @@ actually use them instead of grep:
 
 > Honest scope: Rider's MCP alone already gives you symbol/file search. This plugin's value is
 > **enforcement + token control + projectPath ergonomics** on top of it.
+
+### Subagents — delegate the work, keep your context clean
+
+Both plugins ship a **context-isolated subagent**. Instead of the hook *nudging* you, you (or Claude,
+automatically) hand the whole task to a subagent that does the raw reading/searching in **its own
+throwaway context** and returns **only the compressed conclusion** — the raw log lines or source
+matches never enter your main context. This is the bypass-proof token win (a separate context, not a
+gate) and usually the *most accurate* path because the subagent is single-purpose.
+
+| Subagent | Use it for | Returns |
+| --- | --- | --- |
+| **`gamedev-log-analyzer:log-analyst`** | "analyze this log", "what errors/warnings", "what changed", "track this scalar", "which warnings by code" | A compact severity/dedup/code-rollup/`file:line` answer — never raw log lines |
+| **`rider-mcp-enforcer:code-locator`** | "where is X defined", "what calls Y", "all usages of Z", "find file W" (C#/.NET or Unreal C++ in Rider) | A tight `kind name @ file:line` table — never source bodies |
+
+**How to use:** just ask naturally — "analyze `Editor.log`" or "find usages of `AMyActor`" — and Claude
+delegates automatically (the agents auto-route by description). Or invoke one explicitly by its
+namespaced name. A 3,000-line log comes back as ~300 tokens; a codebase-wide search as a few dozen
+`file:line` rows. `code-locator` needs Rider's MCP connected; `log-analyst` needs nothing (pure CLI).
 
 ### Commands & tools
 - `/rider-mcp-enforcer:setup` — configure the plugin (see [Setup](#setup--configuration-command)).
@@ -202,9 +220,9 @@ rider-mcp-enforcer — cumulative token savings (vs forwarding Rider's raw respo
 #   It detects Rider's SSE endpoint, asks for the project path, and writes the config.
 ```
 
-Verify the `rider-search` MCP server and its tools appear, and that a `grep src/**/*.cpp` is blocked
-with a redirect message. (The `npm install` for each plugin's MCP server runs automatically on
-session start via a hook into `${CLAUDE_PLUGIN_DATA}`.)
+Verify the `rider-search` MCP server and its tools appear, and that a `grep src/**/*.cpp` triggers a
+nudge toward the Rider tools (or is denied under `RIDER_ENFORCE=block`). (The `npm install` for each
+plugin's MCP server runs automatically on session start via a hook into `${CLAUDE_PLUGIN_DATA}`.)
 
 ## Setup / configuration command
 
@@ -270,7 +288,7 @@ Check what's installed with `/plugin` (it lists each plugin's version). If a com
 | `RIDER_EXCLUDE` | `/intermediate/,/binaries/,/build/,/saved/,/deriveddatacache/,/.vs/,/.idea/,/node_modules/,.vcxproj,.sln,.filters` | Comma list of case-insensitive path substrings dropped from results (build artifacts / generated noise). |
 | `RIDER_EXCLUDE_OFF` | `0` | `1`/`true`/`on` keeps the excluded paths in results. |
 | `RIDER_STATS_FILE` | `~/.rider-mcp-enforcer/stats.json` | Where the cumulative token-savings ledger is written. |
-| `RIDER_ENFORCE` | `1` | Set to `0`/`false`/`off` to **disable the grep-blocking hook** — use this if Rider MCP is off/unavailable and you don't want code searches blocked. |
+| `RIDER_ENFORCE` | `warn` | `warn` (default) = run the command + inject a nudge; `block` = hard-deny; `0`/`off` = disable the hook entirely. |
 
 ## How enforcement works
 
@@ -314,15 +332,15 @@ Rider — MCP is off or the URL is wrong.
 | Tool call returns "rider-search-proxy is not connected to Rider" | `RIDER_MCP_SSE_URL` unset/unreachable | Set it from **Copy SSE Config**; confirm with `curl`. |
 | Tool returns "Unable to determine the target project" | Multiple projects open in Rider, no `projectPath` | Set `RIDER_PROJECT_PATH` to the project root (the error lists open projects), or pass `projectPath` per call. |
 | Tool returns "`projectPath`=… doesn't correspond to any open project" | The project is **not open in Rider** | Rider MCP only searches projects open in the IDE. Open the project in Rider (it must finish indexing), then retry. The error lists the currently-open projects. |
-| **Code searches get blocked but Rider tools don't work** (MCP off → stuck) | Hook blocks grep while Rider is unavailable | Set `RIDER_ENFORCE=0` to disable the block until MCP is on, **or** disable the plugin. |
-| Hook blocks a search you wanted | False positive on a code path | Target a non-code file, or set `RIDER_ENFORCE=0` for that session. |
+| Code search nudged when you wanted plain grep | The hook is steering you to Rider | Default `warn` still **runs** the command — just heed or ignore the nudge. To silence it entirely: `RIDER_ENFORCE=0`. |
+| `RIDER_ENFORCE=block` denies a search while Rider is unavailable | You opted into hard-block but MCP is off | Set `RIDER_ENFORCE=0` (or back to `warn`) until MCP is on. |
 | Wrong/empty summaries | Rider tool name differs from defaults, or unusual response shape | Set `RIDER_SUMMARIZE_TOOLS` to your build's tool names; tune `RIDER_MAX_RESULTS`. |
 | `curl` to the SSE URL refuses connection | Rider not running, MCP off, or wrong port | Start Rider, enable MCP, re-copy the SSE config. |
 | `Dependency "gamedev-log-analyzer@rider-mcp-enforcer" is not found in any configured marketplace` (Plugin Errors panel) | **Stale marketplace cache** after the `ue-log-analyzer`→`gamedev-log-analyzer` rename: the updated `plugin.json` names the new dependency, but your cached catalog still lists the old one | Refresh the catalog, then reload: `/plugin marketplace update rider-mcp-enforcer` → `/reload-plugins` (restart Claude Code if the panel still shows it). A leftover `ue-log-analyzer` install is harmless — remove it with `claude plugin prune`. |
 
-> **The disabled-MCP footgun:** with MCP off, the proxy returns "not connected" *and* the hook would
-> block code-grep — leaving Claude no way to search. The hook honors `RIDER_ENFORCE=0` precisely for
-> this case: it disables blocking so grep works as a fallback until you turn MCP on.
+> **MCP off?** No footgun by default — the hook's default `warn` always lets grep run, so Claude can
+> still search even when Rider's MCP is unavailable. Only `RIDER_ENFORCE=block` would deny it; set
+> `RIDER_ENFORCE=0` (or `warn`) in that case.
 
 ## Status / caveats
 
