@@ -61,6 +61,15 @@ process.stdin.on("end", () => {
   }
   if (!hit) process.exit(0);
 
-  process.stderr.write(nudgeText(hit.target, hit.kind) + "\n");
-  process.exit(mode === "warn" ? 0 : 2); // warn = allow+nudge; block = deny+nudge
+  const nudge = nudgeText(hit.target, hit.kind);
+  if (mode === "warn") {
+    // allow the command, but inject the nudge into the model's context (stderr on exit 0 is not
+    // reliably surfaced; additionalContext is).
+    process.stdout.write(
+      JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", additionalContext: nudge } })
+    );
+    process.exit(0);
+  }
+  process.stderr.write(nudge + "\n"); // block: deny + show nudge
+  process.exit(2);
 });

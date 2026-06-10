@@ -32,7 +32,9 @@ function isCodeSearchSegment(segment) {
   if (!isSearch) return false;
 
   const codeExt = /\.(c|cc|cxx|cpp|h|hpp|hh|inl|ipp|tpp|cs)\b/.test(s);
-  const codeDir = /(^|[\s"'/\\])(src|source|sources|engine|plugins)[\\/]/.test(s);
+  // NOTE: `plugins` was removed — it over-matched (`.claude/plugins/`, this repo's own plugin dirs),
+  // so a `find -name X` whose path merely contained `plugins/` was wrongly flagged as a code search.
+  const codeDir = /(^|[\s"'/\\])(src|source|sources|engine)[\\/]/.test(s);
   const textTarget =
     /\.(log|txt|md|markdown|json|ya?ml|csv|tsv|xml|html?|ini|cfg|conf|toml|lock)\b/.test(s) ||
     /(^|[\s"'/\\])(logs?|build|intermediate|saved|node_modules|\.git)[\\/]/.test(s);
@@ -51,26 +53,39 @@ process.stdin.on("end", () => {
   }
   if (!cmd) process.exit(0);
 
-  // Escape hatch: if Rider MCP is disabled/unavailable, blocking grep would leave Claude
-  // with no way to search code. Set RIDER_ENFORCE=0 (or false/off) to disable blocking.
-  const enforce = String(process.env.RIDER_ENFORCE ?? "1").toLowerCase();
-  if (enforce === "0" || enforce === "false" || enforce === "off") process.exit(0);
+  // Mode: env RIDER_ENFORCE > default "warn". The hard-block guarantee was always porous (the Grep
+  // tool / MCP search / Read tool bypass this hook entirely), so denying-by-default paid friction for a
+  // guarantee that didn't hold. Default now NUDGES (warn) and lets the command run; opt into hard
+  // denial with RIDER_ENFORCE=block (or 1/on/true). RIDER_ENFORCE=0/off disables the nudge too.
+  const raw = String(process.env.RIDER_ENFORCE ?? "warn").toLowerCase();
+  const mode =
+    ["0", "false", "off", "none", "allow"].includes(raw) ? "off"
+    : ["1", "true", "on", "block", "deny", "hard"].includes(raw) ? "block"
+    : "warn";
+  if (mode === "off") process.exit(0);
 
   // Evaluate each shell segment independently; only an actual search-tool invocation counts.
   const segments = cmd.split(/\|\||&&|[|;&\n]/g);
   const blocked = segments.some((seg) => seg.trim() && isCodeSearchSegment(seg));
   if (!blocked) process.exit(0);
 
-  process.stderr.write(
-    "[rider-mcp-enforcer] Blocked a code-symbol search via Bash.\n" +
-      "Use the Rider MCP tools (server: 'rider-search') instead:\n" +
-      "  - symbol / definition         -> search_symbol  (args: q, limit, projectPath)\n" +
-      "  - text / references in code   -> search_text or search_regex  (q, paths, limit)\n" +
-      "  - file by name                -> search_file / find_files_by_name_keyword\n" +
-      "  - type info at a position     -> get_symbol_info  (filePath, line, column)\n" +
-      "They use Rider's index, are token-capped by the proxy. If multiple projects are open,\n" +
-      "pass projectPath (or set RIDER_PROJECT_PATH). For raw non-code text (logs, config),\n" +
-      "re-run targeting a non-code file, or set RIDER_ENFORCE=0."
-  );
-  process.exit(2); // block
+  const nudge =
+    "[rider-mcp-enforcer] " + (mode === "block" ? "Blocked" : "Heads-up:") + " a code-symbol search via Bash.\n" +
+    "Prefer the Rider MCP tools (server: 'rider-search') — token-capped, semantic (Rider's index):\n" +
+    "  - symbol / definition         -> search_symbol  (args: q, limit, projectPath)\n" +
+    "  - text / references in code   -> search_text or search_regex  (q, paths, limit)\n" +
+    "  - file by name                -> search_file / find_files_by_name_keyword\n" +
+    "  - type info at a position     -> get_symbol_info  (filePath, line, column)\n" +
+    "Or delegate to the `code-locator` subagent (returns a compact file:line table). If multiple\n" +
+    "projects are open, pass projectPath. Raw non-code text → re-run on a non-code file; disable with RIDER_ENFORCE=0.";
+
+  if (mode === "warn") {
+    // allow, but inject the nudge into the model's context (stderr on exit 0 isn't reliably surfaced).
+    process.stdout.write(
+      JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", additionalContext: nudge } })
+    );
+    process.exit(0);
+  }
+  process.stderr.write(nudge + "\n");
+  process.exit(2); // block (opt-in via RIDER_ENFORCE=block)
 });

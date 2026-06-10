@@ -44,8 +44,9 @@ scalar columns that decide the answer.
 - **Enforcement (opt-out):** a `PreToolUse` hook intercepts raw Bash log dumps (`grep`/`tail`/`cat`/`rg`
   over a `.log` / `.jsonl` / `Logs` path) **and unbounded `Read`s of large (≥ 200 KB) log files**, and
   steers them here — so the token-cheap path is the default instead of something you have to remember. A
-  sliced `Read` (`offset`/`limit`) always passes, so it never strands you. `block` (default) denies +
-  nudges, `warn` allows + nudges, `off` disables — switch with `gamedev-log enforce <mode>` or `GDLOG_ENFORCE`.
+  sliced `Read` (`offset`/`limit`) always passes, so it never strands you. `warn` (default) allows +
+  nudges, `block` denies + nudges, `off` disables — switch with `gamedev-log enforce <mode>` or `GDLOG_ENFORCE`.
+  For hands-off, context-isolated analysis you can also delegate to the **`log-analyst`** subagent.
 
 ## Supported log formats
 
@@ -128,19 +129,24 @@ alone: it's already line-scoped and result-capped, so it isn't a context flood.
 
 | Mode | Behavior |
 | --- | --- |
-| `block` *(default)* | Deny the command (exit 2) and show the `gamedev-log` equivalent. The message is a friendly nudge, but the raw read does **not** run. |
-| `warn` | Allow the command, but print the same nudge (soft). |
+| `warn` *(default)* | Allow the command, but inject the `gamedev-log` equivalent into the model's context as a nudge. Steers without friction. |
+| `block` | Deny the command (exit 2) and show the nudge — the raw read does **not** run. Opt-in hard enforcement. |
 | `off` | Silent passthrough — no enforcement. |
+
+Why `warn` by default: the hard-block guarantee was always porous — the `Grep` tool, MCP search, and
+the `Read` tool bypass enforcement entirely — so denying-by-default paid friction (false-blocks on
+commands that merely *mention* a log path) for a guarantee that didn't hold. `warn` keeps the steering,
+drops the friction; `block` remains one command away when you want a hard gate.
 
 ```bash
 gamedev-log enforce            # show current mode + source
-gamedev-log enforce warn       # soft nudge only
-gamedev-log enforce off        # disable
-gamedev-log enforce block      # re-enable (default)
-GDLOG_ENFORCE=off <cmd>        # per-shell override (env beats config)
+gamedev-log enforce block      # opt into hard denial
+gamedev-log enforce off        # disable entirely
+gamedev-log enforce warn       # back to the default (nudge only)
+GDLOG_ENFORCE=block <cmd>      # per-shell override (env beats config)
 ```
 
-Mode is read **env `GDLOG_ENFORCE` > `~/.gamedev-log-analyzer/config.json` > default `block`**. The hook
+Mode is read **env `GDLOG_ENFORCE` > `~/.gamedev-log-analyzer/config.json` > default `warn`**. The hook
 fails open — any parse/IO error (missing file, permission denied, a directory, an unstattable path)
 allows the action, so it never wedges your workflow.
 

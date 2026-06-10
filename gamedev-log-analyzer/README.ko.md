@@ -41,7 +41,7 @@ Unity `Editor.log`는 보통 수십 MB의 반복 스팸이라 `cat`/`grep`하면
 - **강제(enforcement, opt-out):** `PreToolUse` 훅이 Bash 생(raw) 로그 덤프(`grep`/`tail`/`cat`/`rg`
   로 `.log`/`.jsonl`/`Logs` 대상) **및 대용량(≥ 200 KB) 로그의 무제한 `Read`**를 가로채 이 도구로
   유도 — 토큰 절약 경로가 기본이 됨. 슬라이스 `Read`(`offset`/`limit`)는 항상 통과(막혀도 막다른 길
-  없음). `block`(기본)=차단+안내, `warn`=허용+안내, `off`=해제. `gamedev-log enforce <mode>` 또는
+  없음). `warn`(기본)=허용+안내, `block`=차단+안내, `off`=해제. `gamedev-log enforce <mode>` 또는
   `GDLOG_ENFORCE`로 전환.
 
 ## 지원 로그 포맷
@@ -103,19 +103,23 @@ min/max/avg/Δ), `diff`, `locate`, `tail`, `learnings`, `learnings-reset`, `savi
 
 | 모드 | 동작 |
 | --- | --- |
-| `block` *(기본)* | 명령 차단(exit 2) + `gamedev-log` 대안 안내. 메시지는 친절하지만 생 읽기는 **실행 안 됨**. |
-| `warn` | 명령 허용 + 동일 안내(soft). |
+| `warn` *(기본)* | 명령 허용 + `gamedev-log` 대안을 모델 컨텍스트에 nudge 주입. 마찰 없이 유도. |
+| `block` | 명령 차단(exit 2) + 안내. 생 읽기 **실행 안 됨**. opt-in 강제. |
 | `off` | 조용히 통과 — 강제 없음. |
+
+`warn` 기본 이유: hard-block 보장은 항상 구멍이 있었음 — `Grep` 툴·MCP 검색·`Read`가 enforcement를
+완전 우회 — 그래서 기본 차단은 (로그 경로를 *언급만* 한 명령까지 막는) 마찰을 지키지도 못할 보장 위해
+지불. `warn`은 유도는 유지, 마찰만 제거; hard gate 필요하면 `block` 한 명령이면 됨.
 
 ```bash
 gamedev-log enforce            # 현재 모드+출처 표시
-gamedev-log enforce warn       # soft 안내만
-gamedev-log enforce off        # 해제
-gamedev-log enforce block      # 재활성(기본)
-GDLOG_ENFORCE=off <cmd>        # 셸 단위 오버라이드(env가 config보다 우선)
+gamedev-log enforce block      # hard 차단 opt-in
+gamedev-log enforce off        # 완전 해제
+gamedev-log enforce warn       # 기본(nudge만)으로 복귀
+GDLOG_ENFORCE=block <cmd>      # 셸 단위 오버라이드(env가 config보다 우선)
 ```
 
-모드 읽기 순서: **env `GDLOG_ENFORCE` > `~/.gamedev-log-analyzer/config.json` > 기본 `block`**. 훅은
+모드 읽기 순서: **env `GDLOG_ENFORCE` > `~/.gamedev-log-analyzer/config.json` > 기본 `warn`**. 훅은
 fail-open — 파싱/IO 오류(파일 없음·권한 거부·디렉터리·stat 불가) 시 허용(워크플로를 막지 않음).
 
 ```bash

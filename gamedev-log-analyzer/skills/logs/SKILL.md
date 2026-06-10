@@ -66,7 +66,7 @@ Quote every path argument (Windows paths/spaces). `--help` lists everything.
   intercepts raw Bash log reads (`grep`/`tail`/`cat`/… over `.log`/`.jsonl`/`Logs`) **and unbounded
   `Read`s of large (≥ 200 KB) logs**, steering them here. A sliced `Read` (`offset`/`limit`) always
   passes — that's the one-step escape when you truly need raw bytes or when a format parses poorly.
-  `block` (default) denies + nudges; `warn` allows + nudges; `off` disables. Env: `GDLOG_ENFORCE`. If a
+  `warn` (default) allows + nudges; `block` denies + nudges; `off` disables. Env: `GDLOG_ENFORCE`. If a
   user hits the block and genuinely wants raw bytes, tell them to re-Read with `offset`/`limit`, or
   `gamedev-log enforce warn|off`.
 
