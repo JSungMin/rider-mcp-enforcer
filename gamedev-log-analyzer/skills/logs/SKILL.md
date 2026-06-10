@@ -70,6 +70,17 @@ Quote every path argument (Windows paths/spaces). `--help` lists everything.
   user hits the block and genuinely wants raw bytes, tell them to re-Read with `offset`/`limit`, or
   `gamedev-log enforce warn|off`.
 
+## Inline lookup vs. delegating to the `log-analyst` subagent
+- A single quick check on a log — one summary, one search — whose result you want to see: run the CLI
+  inline. Cheapest path; a subagent costs ~15k tokens of its own to return a few hundred.
+- Once you reach a third *related* pass over the same log (severity, then a trace tag, then a scalar
+  window), or you know up front it's a multi-step investigation, hand the whole thing to the
+  `log-analyst` subagent in one call. It runs every pass in its own context and returns one compact
+  answer, so the raw output never piles up in yours.
+- Rule of thumb: inline for 1–2; batch-delegate at 3+ related passes or a multi-step dig. Don't spawn a
+  subagent for one summary, and don't run ten sequential inline reads when one delegation would do.
+  "Related" is the signal — count alone doesn't decide it.
+
 ## Default flow ("check the logs")
 
 ```bash
