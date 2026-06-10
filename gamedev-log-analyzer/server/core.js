@@ -105,11 +105,60 @@ function learningsReport() {
   );
 }
 
+// ---- savings ledger (local; "how many tokens did I save vs dumping the raw log into context") ----
+const SAVINGS_FILE = cfg("GDLOG_SAVINGS_FILE", "savingsFile", path.join(CONFIG_DIR, "savings.json"));
+const tok = (s) => Math.round(Buffer.byteLength(String(s), "utf8") / 4);
+const readSavings = () => {
+  try { return JSON.parse(fs.readFileSync(SAVINGS_FILE, "utf8")) || {}; } catch { return {}; }
+};
+function recordSavings(rawTok, outTok) {
+  const s = readSavings();
+  s.runs = (s.runs || 0) + 1;
+  s.rawTok = (s.rawTok || 0) + rawTok;
+  s.outTok = (s.outTok || 0) + outTok;
+  const saved = rawTok - outTok;
+  if (saved > (s.bestSaved || 0)) { s.bestSaved = saved; s.bestRaw = rawTok; s.bestOut = outTok; }
+  try {
+    fs.mkdirSync(path.dirname(SAVINGS_FILE), { recursive: true });
+    fs.writeFileSync(SAVINGS_FILE, JSON.stringify(s, null, 2));
+  } catch {
+    /* best-effort */
+  }
+}
+// Per-call one-liner — only when the raw log is big enough that the saving is worth showing (and the
+// line's own ~1-line cost is negligible). Mirrors the conservative coverage-hint gating.
+function savingsLine(rawTok, outTok) {
+  if (rawTok < 5000) return "";
+  const ratio = outTok > 0 ? Math.round(rawTok / outTok) : rawTok;
+  const pct = (100 * (1 - outTok / Math.max(rawTok, 1))).toFixed(1);
+  return `\n\n✓ Saved ~${(rawTok - outTok).toLocaleString()} tokens here (${pct}% / ${ratio}× smaller than the ~${rawTok.toLocaleString()}-tok raw log).`;
+}
+function savingsReport() {
+  const s = readSavings();
+  if (!s.runs) return "No savings recorded yet — run search / summary / fields / diff / locate on some logs first.";
+  const ratio = s.outTok > 0 ? Math.round(s.rawTok / s.outTok) : "∞";
+  const best = s.bestRaw
+    ? `\n  biggest single run: ${s.bestRaw.toLocaleString()} → ${s.bestOut.toLocaleString()} tok (saved ${s.bestSaved.toLocaleString()})`
+    : "";
+  return (
+    `gamedev-log-analyzer savings (local, ${s.runs} analysis run(s))\n` +
+    `  total saved: ~${(s.rawTok - s.outTok).toLocaleString()} tokens vs dumping raw logs into context\n` +
+    `  raw → output: ${s.rawTok.toLocaleString()} → ${s.outTok.toLocaleString()} tok (~${ratio}× smaller)${best}\n\n` +
+    `Ledger: ${SAVINGS_FILE}`
+  );
+}
+
 // ---- single dispatcher used by BOTH the MCP server and the CLI ----
 // Returns { text, isError }. The transport (MCP / CLI) decides how to render it.
 export function runTool(name, a = {}) {
   const err = (text) => ({ text, isError: true });
   const out = (text) => ({ text, isError: false });
+  // Record token savings (raw log vs our output) + append the per-call savings line, then return.
+  const finishOut = (rawText, body) => {
+    const rawTok = tok(rawText), outTok = tok(body);
+    try { recordSavings(rawTok, outTok); } catch { /* best-effort */ }
+    return out(body + savingsLine(rawTok, outTok));
+  };
   try {
     if (name === "log_setup") {
       const { current, changed } = applySetup(a);
@@ -129,6 +178,11 @@ export function runTool(name, a = {}) {
     if (name === "log_learnings_reset") {
       try { fs.writeFileSync(LEARN_FILE, "{}"); } catch { /* ignore */ }
       return out("Learnings ledger cleared.");
+    }
+    if (name === "log_savings") return out(savingsReport());
+    if (name === "log_savings_reset") {
+      try { fs.writeFileSync(SAVINGS_FILE, "{}"); } catch { /* ignore */ }
+      return out("Savings ledger cleared.");
     }
     if (name === "log_detect") {
       const found = detectLogs(a.projectPath || PROJECT_PATH);
@@ -156,7 +210,8 @@ export function runTool(name, a = {}) {
       const ta = readText(pa, LOG_MAX_BYTES);
       const tb = readText(pb, LOG_MAX_BYTES);
       try { recordLearnings(ta); recordLearnings(tb); } catch { /* best-effort */ }
-      return out(
+      return finishOut(
+        ta + tb, // raw baseline = reading BOTH logs
         `A (base): ${pa}\nB (new):  ${pb}\n\n` +
           diffLogs(ta, tb, {
             query: a.query || "",
@@ -185,7 +240,7 @@ export function runTool(name, a = {}) {
     let covHint = "";
     try { covHint = coverageHint(recordLearnings(text)); } catch { /* learnings are best-effort */ }
     if (name === "log_locate") {
-      return out(
+      return finishOut(text,
         `Source: ${lp}\n` +
           locateLog(text, {
             query: a.query || "",
@@ -198,7 +253,7 @@ export function runTool(name, a = {}) {
       );
     }
     if (name === "log_fields") {
-      return out(
+      return finishOut(text,
         `Source: ${lp}\n` +
           extractFields(text, {
             fields: Array.isArray(a.fields) && a.fields.length ? a.fields : ["ts"],
@@ -209,11 +264,12 @@ export function runTool(name, a = {}) {
             window: Array.isArray(a.window) && a.window.length === 2 ? a.window : null,
             max: Number(a.max) || 200,
             maxLineChars: MAX_LINE_CHARS,
+            stats: a.stats === true || a.stats === "true",
           }) + covHint
       );
     }
     if (name === "log_search" || name === "log_summary") {
-      return out(
+      return finishOut(text,
         `Source: ${lp}\n` +
           analyzeLog(text, {
             query: a.query || "",

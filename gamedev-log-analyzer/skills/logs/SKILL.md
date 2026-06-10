@@ -52,11 +52,15 @@ Quote every path argument (Windows paths/spaces). `--help` lists everything.
 - `fields` — pull just decisive scalars from dense per-frame trace logs into a compact table.
   `--fields Pawn,Alpha,ts,Pos.x,step:Pos,d:Yaw` (forms: `Key`, `Key.x|.y|.z`, `Key.Y|.P|.R`, `ts`,
   `dts`, `d:Key`, `step:Key`) · `--query` · `--window t0,t1` · `--max N`. Biggest win on per-frame logs.
+  Add **`--stats`** to collapse to per-column `min/max/avg/first/last/Δ` (one line per field) instead of
+  rows — use it for "what's the range/trend of X over this window?" (even fewer tokens than the table).
 - `tail` — last N raw lines (escape hatch). `--lines N`.
 - `setup` / `config` — persist/show settings (`~/.gamedev-log-analyzer/config.json`). Keys: `--projectPath
   --logPath --logMaxBytes --maxGroups --maxLineChars`.
 - `learnings` / `learnings-reset` — local sanitized parse-coverage report + top unparsed line shapes
   (new-parser candidates). See *Growing format coverage* below; a low-coverage file also auto-nudges.
+- `savings` / `savings-reset` — local cumulative report of how many tokens you've saved vs dumping raw
+  logs into context. Each analysis also appends a one-line `✓ Saved ~N tokens (M× smaller)` for big logs.
 
 ## Default flow ("check the logs")
 

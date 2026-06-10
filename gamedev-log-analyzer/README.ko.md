@@ -73,8 +73,9 @@ Claude는 **skill**을 통해 `gamedev-log` CLI를 셸 호출합니다 — **상
 node "${CLAUDE_PLUGIN_ROOT}/server/cli.js" <command> [--flags]
 ```
 
-**명령어**(`gamedev-log <command>`): `detect`, `summary`, `search`, `fields`, `diff`, `locate`, `tail`,
-`learnings`, `learnings-reset`, `setup`, `config`.
+**명령어**(`gamedev-log <command>`): `detect`, `summary`, `search`, `fields`(`--stats`로 컬럼별
+min/max/avg/Δ), `diff`, `locate`, `tail`, `learnings`, `learnings-reset`, `savings`, `savings-reset`,
+`setup`, `config`.
 
 ```bash
 # 직접 실행도 가능 — 스크립트/CI/임의 에이전트에서 (순수 Node, 의존성 0):
@@ -107,7 +108,8 @@ cd server && npm install && cd ..
 ```
 
 도구: `log_detect`, `log_summary`, `log_search`, `log_fields`, `log_diff`, `log_tail`,
-`log_learnings`, `log_learnings_reset`, `log_setup`, `log_config` — CLI와 byte 동일 출력.
+`log_learnings`, `log_learnings_reset`, `log_savings`, `log_savings_reset`, `log_setup`, `log_config`
+— CLI와 byte 동일 출력.
 
 ## 사전 요구사항
 - PATH에 **Node.js ≥ 18**. (Rider/Unity 설치 불필요 — 로그 파일만 읽음. 기본 CLI 경로는 **npm 의존성

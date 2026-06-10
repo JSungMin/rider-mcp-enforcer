@@ -78,8 +78,9 @@ always-on context cost** (nothing sits in the prompt until a log is actually rel
 node "${CLAUDE_PLUGIN_ROOT}/server/cli.js" <command> [--flags]
 ```
 
-**Commands** (`gamedev-log <command>`): `detect`, `summary`, `search`, `fields`, `diff`, `locate`, `tail`,
-`learnings`, `learnings-reset`, `setup`, `config`.
+**Commands** (`gamedev-log <command>`): `detect`, `summary`, `search`, `fields` (`--stats` for
+per-column min/max/avg/Δ), `diff`, `locate`, `tail`, `learnings`, `learnings-reset`, `savings`,
+`savings-reset`, `setup`, `config`.
 
 ```bash
 # Run directly too — in scripts, CI, or any agent (pure Node, no dependencies):
@@ -113,7 +114,8 @@ cd server && npm install && cd ..
 ```
 
 This exposes `log_detect`, `log_summary`, `log_search`, `log_fields`, `log_diff`, `log_tail`,
-`log_learnings`, `log_learnings_reset`, `log_setup`, `log_config` — byte-identical output to the CLI.
+`log_learnings`, `log_learnings_reset`, `log_savings`, `log_savings_reset`, `log_setup`, `log_config`
+— byte-identical output to the CLI.
 
 ## Prerequisites
 - **Node.js ≥ 18** on PATH. (No Rider/Unity install needed — it only reads the log file. The default

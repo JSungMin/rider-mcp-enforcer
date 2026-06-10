@@ -69,9 +69,10 @@ const locateNoBodies = !/undeclared identifier|null pointer/.test(locate); // no
 const tmp = path.join(os.tmpdir(), "gamedev-log-eval-core.log");
 fs.writeFileSync(tmp, log);
 const viaCore = runTool("log_search", { path: tmp, severityMin: "Warning", groupBy: "callsite" });
-// runTool prepends "Source: <path>\n" then the exact engine output → must end with it byte-for-byte.
+// runTool wraps the exact engine output ("Source: <path>\n" + engineOut [+ coverage/savings lines]),
+// so MCP=CLI=engine ⇒ the engine output must be embedded verbatim.
 const engineOut = analyzeLog(log, { severityMin: "Warning", groupBy: "callsite" });
-const coreOk = !viaCore.isError && viaCore.text.endsWith(engineOut);
+const coreOk = !viaCore.isError && viaCore.text.includes(engineOut);
 try { fs.unlinkSync(tmp); } catch { /* ignore */ }
 
 // coverage hint: an unknown format (<40% parsed, ≥100 lines) gets a one-line nudge to the learnings
@@ -92,6 +93,13 @@ const tailed = readText(tailPath, Math.floor(Buffer.byteLength(tailText) / 2) + 
 try { fs.unlinkSync(tailPath); } catch { /* ignore */ }
 const firstReal = tailed.split("\n")[1] || ""; // line[0] is the "…truncated…" marker
 const tailOk = /^LINE\d{4}: /.test(firstReal); // a COMPLETE line, not a fragment
+
+// fields --stats: aggregate each numeric column to one min/max/avg/Δ line (fewer tokens than rows).
+const statsOut = extractFields(log, { fields: ["Alpha", "Gap"], query: "", severityMin: "Display", stats: true });
+const statsOk = /Alpha: n=\d+ min=/.test(statsOut) && /avg=/.test(statsOut) && /Δ=/.test(statsOut) && !/\bts\tAlpha\b/.test(statsOut);
+
+// savings: a big log (>5000 raw tok) gets a per-call "✓ Saved ~N tokens here" line via runTool.
+const savingsLineOk = /✓ Saved ~[\d,]+ tokens here/.test(viaCore.text); // viaCore = summary of the 117k-tok synthetic log
 
 // Multi-engine classification — SYNTHETIC samples from each engine's documented format. UE + MSVC build
 // are live-verified; Unity-deep + Godot are BEST-EFFORT (format from public docs, NOT verified against
@@ -142,6 +150,8 @@ const rows = [
   ["JSONL field extraction", jsonlOk, "true", jsonlOk],
   ["coverage hint (unknown fmt only)", covHintOk, "true", covHintOk],
   ["tail-read clean line boundary", tailOk, "true", tailOk],
+  ["fields --stats aggregate", statsOk, "true", statsOk],
+  ["savings per-call line (big log)", savingsLineOk, "true", savingsLineOk],
 ];
 
 console.log(`gamedev-log-analyzer eval — ${N} synthetic (sanitized) lines\n`);
