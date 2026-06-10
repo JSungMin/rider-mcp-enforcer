@@ -9,9 +9,9 @@
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/JSungMin/rider-mcp-enforcer/pulls)
 [![Stars](https://img.shields.io/github/stars/JSungMin/rider-mcp-enforcer?style=social)](https://github.com/JSungMin/rider-mcp-enforcer/stargazers)
 
-> **큰 것을 싸게 읽는다.** 대형 **Unreal C++ / Unity / .NET** 프로젝트용 2-플러그인 Claude Code
-> 마켓플레이스: 코드베이스를 `grep` 대신 **Rider 인덱스**로 검색하고, **수십 MB 에디터 로그**를
-> 분석 — 둘 다 **~99% 적은 토큰**으로.
+> 대형 Unreal C++ · Unity · .NET 프로젝트를 위한 Claude Code 플러그인 두 개. 코드베이스는 `grep`
+> 대신 Rider 인덱스로 검색하고, 수십 MB짜리 에디터 로그는 대화에 통째로 쏟지 않고 읽습니다. 둘 다
+> 토큰을 약 99% 적게 씁니다.
 
 ### 데모
 
@@ -107,24 +107,25 @@ Rider 2025.2+ 는 MCP 서버를 내장하고 있고, (라이브로 확인된) `s
 | **라우팅 스킬** | `skills/rider-search/SKILL.md` | Karpathy 스타일 규칙: 심볼/파일/텍스트 검색은 Rider 도구 우선, grep은 최후수단. |
 | **요약 프록시** | `proxy/` | Rider MCP 앞단의 MCP 서버. JSON 응답(`{items:[{filePath,startLine,lineText}],more}`)을 간결한 `path:line  text`로 변환하고 `RIDER_MAX_RESULTS`로 상한, 기본 `projectPath`를 자동 주입. 대형 코드베이스의 결과 폭발이 컨텍스트를 터뜨리는 걸 막음. |
 
-> 솔직한 범위: Rider MCP만으로도 심볼/파일 검색은 됩니다. 이 플러그인의 가치는 그 위에 얹는
-> **강제 + 토큰 제어 + projectPath 편의** 입니다.
+> 범위를 분명히 하자면, 심볼/파일 검색은 Rider MCP만으로도 됩니다. 이 플러그인이 그 위에 더하는 건
+> 강제, 토큰 제어, projectPath 처리입니다.
 
-### 서브에이전트 — 작업은 위임, 내 컨텍스트는 깨끗하게
+### 서브에이전트
 
-두 플러그인 모두 **컨텍스트 격리 서브에이전트**를 제공합니다. 훅이 *유도*하는 대신, 작업 전체를
-서브에이전트에 넘기면 **자기 버려지는 컨텍스트**에서 raw 읽기/검색을 하고 **압축 결론만** 반환 —
-raw 로그 줄이나 소스 매치가 내 메인 컨텍스트에 안 들어옵니다. 우회 불가능한 토큰 이득(게이트가 아닌
-별도 컨텍스트)이자, 단일 목적이라 보통 가장 정확한 경로입니다.
+두 플러그인 모두 작업을 통째로 넘길 수 있는 서브에이전트를 제공합니다. 서브에이전트는 자기
+컨텍스트에서 raw 읽기와 검색을 하고 결과만 돌려주므로, raw 로그 줄이나 소스 매치가 메인 컨텍스트에
+들어오지 않습니다. 훅처럼 게이트로 막는 게 아니라 컨텍스트 자체가 분리돼 있어 새어나갈 일이 없고,
+한 가지 일만 하니 보통 더 정확합니다.
 
 | 서브에이전트 | 용도 | 반환 |
 | --- | --- | --- |
-| **`gamedev-log-analyzer:log-analyst`** | "이 로그 분석", "에러/경고 뭐가", "뭐가 바뀌었나", "이 스칼라 추적", "코드별 경고" | 간결한 severity/dedup/코드롤업/`file:line` 답 — raw 로그 줄 없음 |
-| **`rider-mcp-enforcer:code-locator`** | "X 어디 정의", "Y 호출처", "Z 전체 사용처", "W 파일 찾기" (Rider의 C#/.NET·Unreal C++) | 간결한 `kind name @ file:line` 테이블 — 소스 본문 없음 |
+| `gamedev-log-analyzer:log-analyst` | "이 로그 분석", "에러/경고 뭐가", "뭐가 바뀌었나", "이 스칼라 추적", "코드별 경고" | 간결한 severity / dedup / 코드롤업 / `file:line` 답 (raw 로그 줄 없음) |
+| `rider-mcp-enforcer:code-locator` | "X 어디 정의", "Y 호출처", "Z 전체 사용처", "W 파일 찾기" (Rider의 C#/.NET·Unreal C++) | 간결한 `kind name @ file:line` 테이블 (소스 본문 없음) |
 
-**사용법:** 그냥 자연스럽게 — "`Editor.log` 분석해줘" / "`AMyActor` 사용처 찾아줘" — 하면 Claude가
-description으로 **자동 위임**. 또는 namespaced 이름으로 명시 호출. 3,000줄 로그 → ~300토큰, 코드베이스
-전역 검색 → `file:line` 수십 줄. `code-locator`는 Rider MCP 연결 필요, `log-analyst`는 불필요(순수 CLI).
+그냥 자연스럽게 "`Editor.log` 분석해줘"나 "`AMyActor` 사용처 찾아줘"라고 하면 Claude가 description을
+보고 알아서 위임합니다. namespaced 이름으로 직접 부를 수도 있습니다. 3,000줄 로그가 300토큰 정도로,
+코드베이스 전역 검색이 `file:line` 수십 줄로 돌아옵니다. `code-locator`는 Rider MCP 연결이 필요하고,
+`log-analyst`는 순수 CLI라 따로 필요한 게 없습니다.
 
 ### 명령어 & 도구
 - `/rider-mcp-enforcer:setup` — 플러그인 설정 ([설정](#설정-명령어) 참고).
