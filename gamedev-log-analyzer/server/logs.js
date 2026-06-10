@@ -58,7 +58,13 @@ export function readText(file, maxBytes) {
   try {
     const buf = Buffer.alloc(maxBytes);
     fs.readSync(fd, buf, 0, maxBytes, size - maxBytes);
-    return "…(older lines truncated)…\n" + buf.toString("utf8");
+    let s = buf.toString("utf8");
+    // We started reading mid-file, so the first line is almost certainly a fragment (and may begin with
+    // a split multi-byte char). Drop everything up to and including the first newline so parsing starts
+    // on a clean line boundary — otherwise that fragment pollutes the learnings ledger / mis-parses.
+    const nl = s.indexOf("\n");
+    if (nl !== -1) s = s.slice(nl + 1);
+    return "…(older lines truncated)…\n" + s;
   } finally {
     fs.closeSync(fd);
   }

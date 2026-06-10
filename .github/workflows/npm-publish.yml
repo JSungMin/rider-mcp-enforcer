@@ -2,11 +2,14 @@ name: npm-publish (gamedev-log-analyzer)
 
 # Publishes the gamedev-log-analyzer CLI/MCP package to npm so it can be used without an IDE
 # (`npx -p gamedev-log-analyzer gamedev-log <cmd>` or `npm i -g gamedev-log-analyzer`).
-# Trigger: a `gamedev-v*` tag (e.g. gamedev-v0.3.1) or a manual run. Requires an NPM_TOKEN secret.
+# Trigger: ANY release tag `v*` (so npm stays in sync with every marketplace release), an explicit
+# `gamedev-v*` tag, or a manual run. The publish step is IDEMPOTENT — it reads the package version and
+# skips if that version is already on npm, so rider-only releases (gamedev unchanged) are no-ops and a
+# version is never double-published. Requires an NPM_TOKEN secret.
 on:
   workflow_dispatch:
   push:
-    tags: ["gamedev-v*"]
+    tags: ["v*", "gamedev-v*"]
 
 permissions:
   contents: read
@@ -24,7 +27,20 @@ jobs:
       - name: Sanity — CLI runs dependency-free
         working-directory: gamedev-log-analyzer/server
         run: node cli.js config
+      - name: Is this version already on npm?
+        id: check
+        working-directory: gamedev-log-analyzer/server
+        run: |
+          VER="$(node -p "require('./package.json').version")"
+          if npm view "gamedev-log-analyzer@${VER}" version >/dev/null 2>&1; then
+            echo "gamedev-log-analyzer@${VER} already published — skipping."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "gamedev-log-analyzer@${VER} not on npm — will publish."
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
       - name: Publish to npm
+        if: steps.check.outputs.publish == 'true'
         working-directory: gamedev-log-analyzer/server
         # Write the auth line into the package dir's .npmrc so `npm publish` finds the token even when
         # run from a subdirectory (setup-node's generated .npmrc isn't picked up here). npm never
