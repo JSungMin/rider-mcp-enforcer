@@ -39,8 +39,9 @@ Unity `Editor.log`는 보통 수십 MB의 반복 스팸이라 `cat`/`grep`하면
 - **`log_diff`:** 두 로그 비교 후 **델타만**(신규/사라짐/카운트변경, 변경없는 그룹 생략).
 - **`log_locate`:** 매칭 엔트리의 distinct `file:line` 점프 리스트(소스 열기용).
 - **강제(enforcement, opt-out):** `PreToolUse` 훅이 Bash 생(raw) 로그 덤프(`grep`/`tail`/`cat`/`rg`
-  로 `.log`/`.jsonl`/`Logs` 대상)를 가로채 이 도구로 유도 — 토큰 절약 경로가 기본이 됨.
-  `block`(기본)=차단+안내, `warn`=허용+안내, `off`=해제. `gamedev-log enforce <mode>` 또는
+  로 `.log`/`.jsonl`/`Logs` 대상) **및 대용량(≥ 200 KB) 로그의 무제한 `Read`**를 가로채 이 도구로
+  유도 — 토큰 절약 경로가 기본이 됨. 슬라이스 `Read`(`offset`/`limit`)는 항상 통과(막혀도 막다른 길
+  없음). `block`(기본)=차단+안내, `warn`=허용+안내, `off`=해제. `gamedev-log enforce <mode>` 또는
   `GDLOG_ENFORCE`로 전환.
 
 ## 지원 로그 포맷
@@ -84,11 +85,17 @@ min/max/avg/Δ), `diff`, `locate`, `tail`, `learnings`, `learnings-reset`, `savi
 
 ## 강제(enforcement) — 토큰 절약 경로를 기본으로
 
-`tail … | grep …`으로 로그를 읽으면 생 라인이 그대로 모델 컨텍스트에 쏟아짐 — 이 도구가 막으려는 바로
-그것. `PreToolUse` 훅이 그 갭을 닫음: Bash 명령이 **로그 대상**(`.log`/`.jsonl`/회전된 `.log.N`/`Logs`·
-`Saved/Logs` 경로)에 대한 생 읽기(`grep`/`rg`/`ack`/`ag`/`findstr`/`tail`/`head`/`cat`)면 가로채 동등한
-`gamedev-log`로 안내. 코드 grep(`.cpp`/`.cs`/`src/…`)·비로그 읽기는 통과 — 그 도메인은
-[rider-mcp-enforcer](../README.md) 담당(로그는 일부러 통과시킴).
+`tail … | grep …`으로 — 또는 `Read` 도구로 대용량 로그를 열면 — 생 라인이 그대로 모델 컨텍스트에
+쏟아짐. `PreToolUse` 훅이 두 갭을 닫음:
+
+- **Bash**: **로그 대상**(`.log`/`.jsonl`/회전된 `.log.N`/`Logs`·`Saved/Logs` 경로)에 대한 생
+  읽기(`grep`/`rg`/`ack`/`ag`/`findstr`/`tail`/`head`/`cat`)를 가로챔.
+- **Read 도구**: 대용량(≥ 200 KB) 로그의 **무제한** 읽기를 가로챔. 슬라이스 읽기(`offset`/`limit`)는
+  항상 통과 — 한 단계 escape이자 분석기가 잘 못 파싱하는 포맷의 fallback이라, 막힌 Read가 막다른 길이
+  되지 않음. 작은 로그(< 200 KB)는 통과(이미 쌈).
+
+코드 grep(`.cpp`/`.cs`/`src/…`)·비로그 읽기는 통과 — 그 도메인은 [rider-mcp-enforcer](../README.md)
+담당(로그는 일부러 통과). `Grep` 도구는 건드리지 않음 — 이미 line-scoped + 결과 cap이라 컨텍스트 폭주 아님.
 
 | 모드 | 동작 |
 | --- | --- |
@@ -105,8 +112,7 @@ GDLOG_ENFORCE=off <cmd>        # 셸 단위 오버라이드(env가 config보다 
 ```
 
 모드 읽기 순서: **env `GDLOG_ENFORCE` > `~/.gamedev-log-analyzer/config.json` > 기본 `block`**. 훅은
-fail-open — 파싱/IO 오류 시 명령 허용(셸을 막지 않음). 훅은 **Bash만** 감시 — `Read` 도구는 건드리지
-않음(큰 로그는 `gamedev-log`로 토큰 절약).
+fail-open — 파싱/IO 오류(파일 없음·권한 거부·디렉터리·stat 불가) 시 허용(워크플로를 막지 않음).
 
 ```bash
 # 직접 실행도 가능 — 스크립트/CI/임의 에이전트에서 (순수 Node, 의존성 0):

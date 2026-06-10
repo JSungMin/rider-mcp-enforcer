@@ -34,7 +34,7 @@ gamedev-log search --path Editor.log --severityMin Error --groupBy callsite
 | `diff` | Delta between two logs (new/gone/changed only). |
 | `locate` | Jump list: distinct `file:line` of matches. |
 | `tail` | Last N raw lines. |
-| `enforce` | Show/set Bash log-grep enforcement: `block` (default, deny raw grep/tail/cat over `.log`/`.jsonl`/`Logs` + nudge here), `warn` (allow + nudge), `off`. Env override `GDLOG_ENFORCE`. |
+| `enforce` | Show/set log-read enforcement (PreToolUse hook over **Bash** raw reads *and* unbounded **Read**s of ≥200 KB logs; sliced `Read` passes): `block` (default, deny + nudge here), `warn` (allow + nudge), `off`. Env override `GDLOG_ENFORCE`. |
 | `setup` / `config` | Persist / show settings (`~/.gamedev-log-analyzer/config.json`). |
 
 Run `gamedev-log` with no arguments for full usage. Settings precedence: env (`GDLOG_*`) > config file >
