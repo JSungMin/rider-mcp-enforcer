@@ -43,7 +43,8 @@ const TOOLS = [
     description:
       "Search/analyze an editor log: parse severity + category + file:line, dedup repeated spam into " +
       "templated groups with counts, severity-sorted + token-capped. Filters: query, severityMin, " +
-      "category, file. groupBy 'template' (default) or 'callsite' (roll up by file:line).",
+      "category, file. groupBy 'template' (default), 'callsite' (roll up by file:line), or 'code' " +
+      "(roll up by diagnostic code, e.g. C4996/LNK2019 — collapses noisy builds to one line per code).",
     inputSchema: {
       type: "object",
       properties: {
@@ -54,7 +55,7 @@ const TOOLS = [
         category: { type: "string" },
         file: { type: "string" },
         maxGroups: { type: "number" },
-        groupBy: { type: "string", description: "'template' or 'callsite'" },
+        groupBy: { type: "string", description: "'template', 'callsite', or 'code' (roll up by diagnostic code)" },
       },
     },
   },
@@ -124,7 +125,7 @@ const TOOLS = [
         severityMin: { type: "string", description: "Fatal|Error|Warning|Display (default Warning)" },
         category: { type: "string" },
         file: { type: "string" },
-        groupBy: { type: "string", description: "'template' (default) or 'callsite'" },
+        groupBy: { type: "string", description: "'template' (default), 'callsite', or 'code'" },
         minDelta: { type: "number", description: "Only report count-changes with |Δ| ≥ this (default 1)" },
         maxGroups: { type: "number" },
       },

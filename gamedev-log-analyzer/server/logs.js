@@ -118,13 +118,15 @@ export function parseLine(line) {
   }
 
   // Build/compile diagnostic: path(line[,col]): error|warning CODE: message  (MSVC/UBT/C#)
-  let m = line.match(/^\s*(.+?)\((\d+)(?:,\d+)?\)\s*:\s*(error|warning)\b[^:]*:\s*(.*)$/i);
+  // The CODE (C4996, C2065, CS1002 …) is captured so noisy builds can roll up by code (groupBy=code).
+  let m = line.match(/^\s*(.+?)\((\d+)(?:,\d+)?\)\s*:\s*(error|warning)(?:\s+([A-Za-z]{1,5}\d+))?[^:]*:\s*(.*)$/i);
   if (m) {
     return {
       severity: m[3].toLowerCase() === "error" ? "Error" : "Warning",
       category: "Build",
       location: `${m[1].trim().replace(/\\/g, "/")}:${m[2]}`,
-      message: m[4].trim(),
+      message: m[5].trim(),
+      code: m[4] ? m[4].toUpperCase() : "",
     };
   }
 
@@ -150,6 +152,7 @@ export function parseLine(line) {
       category: "Build",
       location: "",
       message: `${m[3]}: ${m[4]}`.trim(),
+      code: m[3].toUpperCase(),
     };
   }
 
@@ -370,7 +373,7 @@ export function analyzeLog(text, opts = {}) {
     maxLocs = 5,
     maxLineChars = 200,
     summaryOnly = false,
-    groupBy = "template", // "template" (per distinct message) | "callsite" (per file:line)
+    groupBy = "template", // "template" (per distinct message) | "callsite" (per file:line) | "code" (per diagnostic code)
   } = opts;
   const minRank = rank(severityMin);
   const q = String(query).toLowerCase();
@@ -398,10 +401,12 @@ export function analyzeLog(text, opts = {}) {
     const key =
       groupBy === "callsite" && e.location
         ? `${e.severity}|${e.category}|@${e.location}`
+        : groupBy === "code" && e.code
+        ? `${e.severity}|${e.category}|#${e.code}`
         : `${e.severity}|${e.category}|${templateOf(e.message)}`;
     let g = groups.get(key);
     if (!g) {
-      g = { severity: e.severity, category: e.category, message: e.message, count: 0, locs: new Set() };
+      g = { severity: e.severity, category: e.category, code: e.code || "", message: e.message, count: 0, locs: new Set() };
       groups.set(key, g);
     }
     g.count++;
@@ -434,7 +439,8 @@ export function analyzeLog(text, opts = {}) {
       if (msg.length > maxLineChars) msg = msg.slice(0, maxLineChars) + " …";
       const loc = g.locs.size ? "  @ " + [...g.locs].join(", ") : "";
       const mult = g.count > 1 ? `  (×${g.count})` : "";
-      return `${g.severity.toUpperCase()} [${g.category}] ${msg}${mult}${loc}`;
+      const codeTag = groupBy === "code" && g.code && !g.message.startsWith(g.code) ? `${g.code}: ` : "";
+      return `${g.severity.toUpperCase()} [${g.category}] ${codeTag}${msg}${mult}${loc}`;
     })
     .join("\n");
   const more = sorted.length - shown.length;
@@ -528,10 +534,12 @@ function tally(text, { minRank, catLc, fileLc, q, groupBy, maxLocs }) {
     const key =
       groupBy === "callsite" && e.location
         ? `${e.severity}|${e.category}|@${e.location}`
+        : groupBy === "code" && e.code
+        ? `${e.severity}|${e.category}|#${e.code}`
         : `${e.severity}|${e.category}|${templateOf(e.message)}`;
     let g = groups.get(key);
     if (!g) {
-      g = { severity: e.severity, category: e.category, message: e.message, count: 0, locs: new Set() };
+      g = { severity: e.severity, category: e.category, code: e.code || "", message: e.message, count: 0, locs: new Set() };
       groups.set(key, g);
     }
     g.count++;

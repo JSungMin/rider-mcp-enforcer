@@ -29,7 +29,7 @@ gamedev-log search --path Editor.log --severityMin Error --groupBy callsite
 | --- | --- |
 | `detect` | Find editor logs (newest first). |
 | `summary` | Severity counts + top categories (no bodies). |
-| `search` | Parse + dedup into templated groups with counts. |
+| `search` | Parse + dedup into templated groups with counts. `--groupBy callsite\|code` (code = roll up by diagnostic code like `C4996`/`LNK2019`). |
 | `fields` | Columnar scalar extraction from trace logs. |
 | `diff` | Delta between two logs (new/gone/changed only). |
 | `locate` | Jump list: distinct `file:line` of matches. |

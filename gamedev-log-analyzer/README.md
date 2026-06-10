@@ -33,7 +33,9 @@ scalar columns that decide the answer.
 - **Template dedup:** numbers/addresses/GUIDs/paths/instance-ids are normalized so repeated spam
   collapses into one group with a `×count` and representative locations.
 - **Search/filter:** by `severityMin`, `category`, `file`, `query`; `groupBy: "callsite"` rolls
-  everything up by `file:line` (best for "what's flooding my log").
+  everything up by `file:line` (best for "what's flooding my log"), and `groupBy: "code"` rolls up by
+  diagnostic code (`C4996`, `LNK2019`, `CS1002` …) — a noisy build with hundreds of warnings collapses
+  to one line per code (`C4996: … (×37)`), the cheapest way to triage a build instead of grepping it.
 - **`log_fields`:** generic columnar extractor for dense per-frame trace logs — pulls only the chosen
   scalars (`Key`, `Key.x|.y|.z`, `Key.Y|.P|.R`, `ts`, `dts`, `d:Key`, `step:Key`).
 - **`log_diff`:** compare two logs (before/after) and emit **only the delta** — new errors, errors that

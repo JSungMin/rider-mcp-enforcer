@@ -41,8 +41,9 @@ Quote every path argument (Windows paths/spaces). `--help` lists everything.
 - `summary` — severity counts + top categories, no message bodies. `--path | --projectPath`.
 - `search` — parse + dedup into templated groups with `×count` + locations, severity-sorted, capped.
   - `--severityMin Error|Warning|Display` (default Warning) · `--query <substr>` · `--category <Cat>`
-  - `--file <pathfrag>` · `--groupBy template|callsite` (callsite = roll up by `file:line`, best for
-    "which callsite floods the log") · `--maxGroups N`
+  - `--file <pathfrag>` · `--groupBy template|callsite|code` (callsite = roll up by `file:line`, best
+    for "which callsite floods the log"; code = roll up by diagnostic code like `C4996`/`LNK2019`,
+    collapsing a noisy build to one line per code) · `--maxGroups N`
 - `diff` — compare two logs, emit ONLY the delta (new / gone / count-changed groups; unchanged
   omitted). `--pathA <before> --pathB <after>`, or omit both to auto-pick the two newest detected
   logs. Same filters as `search` plus `--minDelta N`. Token-cheap "what changed since last run?".

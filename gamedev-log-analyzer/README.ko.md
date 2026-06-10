@@ -32,7 +32,8 @@ Unity `Editor.log`는 보통 수십 MB의 반복 스팸이라 `cat`/`grep`하면
   미인식 줄은 범용 severity-키워드 폴백.
 - **템플릿 dedup:** 숫자/주소/GUID/경로/인스턴스ID 정규화 → 반복 스팸을 `×count` 한 그룹으로.
 - **검색/필터:** `severityMin`·`category`·`file`·`query`; `groupBy:"callsite"`는 `file:line`별 롤업
-  (로그를 뭐가 도배하는지 파악에 최적).
+  (로그를 뭐가 도배하는지 파악에 최적), `groupBy:"code"`는 진단 코드(`C4996`·`LNK2019`·`CS1002` …)별 롤업
+  — warning 수백 개짜리 빌드를 코드당 한 줄(`C4996: … (×37)`)로 접어 grep 대신 즉시 triage.
 - **`log_fields`:** dense 프레임 로그용 범용 컬럼 추출 — 선택 스칼라만 (`Key`, `Key.x|.y|.z`,
   `Key.Y|.P|.R`, `ts`, `dts`, `d:Key`, `step:Key`).
 - **`log_diff`:** 두 로그 비교 후 **델타만**(신규/사라짐/카운트변경, 변경없는 그룹 생략).
