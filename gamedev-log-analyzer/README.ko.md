@@ -83,6 +83,22 @@ node "${CLAUDE_PLUGIN_ROOT}/server/cli.js" <command> [--flags]
 min/max/avg/Δ), `diff`, `locate`, `tail`, `learnings`, `learnings-reset`, `savings`, `savings-reset`,
 `enforce`(`block`/`warn`/`off`), `setup`, `config`.
 
+## `log-analyst` 서브에이전트에 위임 (가장 깔끔)
+
+플러그인은 **컨텍스트 격리 서브에이전트** `gamedev-log-analyzer:log-analyst`를 제공합니다. CLI를 내
+컨텍스트에서 돌리는 대신 작업 전체를 넘기면, **자기 버려지는 컨텍스트**에서 파싱/읽기를 하고
+**압축 답만** 반환 — raw 로그 줄이 메인 컨텍스트에 안 들어옵니다. 수십 MB 로그도 수백 토큰으로 끝나고
+작업 세트도 작게 유지됩니다.
+
+그냥 자연스럽게 물으면 Claude가 description으로 **자동 위임**:
+
+> "`…/Saved/Logs/Editor.log` 분석해줘 — 주요 에러/경고, 빌드 경고는 코드별로 묶어서"
+
+…또는 `gamedev-log-analyst`로 명시 호출. 알맞은 명령(`summary`/`search`/`diff`/`locate`/`fields`/
+`--groupBy code`)을 골라 실행하고, dedup된 severity 그림 + 열어볼 `file:line`만 답합니다 — raw 덤프
+없음. Node만 있으면 됨(CLI를 셸 호출). 가장 정확하고 토큰도 가장 적은 경로이며, 아래 강제 훅은 raw
+`grep`/`Read`가 새어나갈 때를 위한 폴백입니다.
+
 ## 강제(enforcement) — 토큰 절약 경로를 기본으로
 
 `tail … | grep …`으로 — 또는 `Read` 도구로 대용량 로그를 열면 — 생 라인이 그대로 모델 컨텍스트에

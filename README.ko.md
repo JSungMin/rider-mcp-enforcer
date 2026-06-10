@@ -22,9 +22,10 @@
 
 ### 실제 모습
 ```text
-# Claude가 코드를 grep 시도 → 훅이 차단하고 리다이렉트:
+# Claude가 코드를 grep 시도 → 훅이 Rider 인덱스로 유도 (기본 warn):
 $ grep -rn "AMyActor" Source/**/*.cpp
-⛔ [rider-mcp-enforcer] 코드 심볼 검색 차단. search_symbol / search_text 사용.
+💡 [rider-mcp-enforcer] 코드 심볼 검색 감지. search_symbol / search_text (또는 code-locator
+   서브에이전트) 권장.   # 하드 차단 원하면 RIDER_ENFORCE=block
 
 ▶ search_symbol "AMyActor"
   Source/Game/MyActor.h:42   class MYGAME_API AMyActor : public APawn   (+3 more)
@@ -101,12 +102,29 @@ Rider 2025.2+ 는 MCP 서버를 내장하고 있고, (라이브로 확인된) `s
 
 | 레이어 | 파일 | 효과 |
 | --- | --- | --- |
-| **강제 훅(hook)** | `hooks/block-code-grep.js` | 소스 파일 대상 Bash `grep`/`rg`/`find -name`을 차단하고 Rider MCP 도구로 유도. 비(非)코드 텍스트 검색(로그/md/json)은 통과. `RIDER_ENFORCE=0`으로 끌 수 있음. |
+| **강제 훅(hook)** | `hooks/block-code-grep.js` | 소스 파일 대상 Bash `grep`/`rg`/`find -name`을 가로채 Rider MCP 도구로 유도. **기본 `warn`**: 명령은 실행되고 nudge가 모델 컨텍스트에 주입됨(하드 차단 보장은 항상 구멍 — Grep툴/MCP/Read가 우회). `RIDER_ENFORCE=block`으로 하드 차단, `RIDER_ENFORCE=0`으로 끔. 비코드 텍스트(로그/md/json)는 통과. |
+| **`code-locator` 서브에이전트** | `agents/code-locator.md` | "X 어디 정의 / Y 호출처 / W 파일 찾기"를 컨텍스트 격리 서브에이전트에 위임 — Rider 인덱스를 내부에서 쓰고 간결한 `file:line` 테이블만 반환, raw 매치는 컨텍스트에 안 들어옴. 훅 마찰 없는 정확도+토큰 이득. |
 | **라우팅 스킬** | `skills/rider-search/SKILL.md` | Karpathy 스타일 규칙: 심볼/파일/텍스트 검색은 Rider 도구 우선, grep은 최후수단. |
 | **요약 프록시** | `proxy/` | Rider MCP 앞단의 MCP 서버. JSON 응답(`{items:[{filePath,startLine,lineText}],more}`)을 간결한 `path:line  text`로 변환하고 `RIDER_MAX_RESULTS`로 상한, 기본 `projectPath`를 자동 주입. 대형 코드베이스의 결과 폭발이 컨텍스트를 터뜨리는 걸 막음. |
 
 > 솔직한 범위: Rider MCP만으로도 심볼/파일 검색은 됩니다. 이 플러그인의 가치는 그 위에 얹는
 > **강제 + 토큰 제어 + projectPath 편의** 입니다.
+
+### 서브에이전트 — 작업은 위임, 내 컨텍스트는 깨끗하게
+
+두 플러그인 모두 **컨텍스트 격리 서브에이전트**를 제공합니다. 훅이 *유도*하는 대신, 작업 전체를
+서브에이전트에 넘기면 **자기 버려지는 컨텍스트**에서 raw 읽기/검색을 하고 **압축 결론만** 반환 —
+raw 로그 줄이나 소스 매치가 내 메인 컨텍스트에 안 들어옵니다. 우회 불가능한 토큰 이득(게이트가 아닌
+별도 컨텍스트)이자, 단일 목적이라 보통 가장 정확한 경로입니다.
+
+| 서브에이전트 | 용도 | 반환 |
+| --- | --- | --- |
+| **`gamedev-log-analyzer:log-analyst`** | "이 로그 분석", "에러/경고 뭐가", "뭐가 바뀌었나", "이 스칼라 추적", "코드별 경고" | 간결한 severity/dedup/코드롤업/`file:line` 답 — raw 로그 줄 없음 |
+| **`rider-mcp-enforcer:code-locator`** | "X 어디 정의", "Y 호출처", "Z 전체 사용처", "W 파일 찾기" (Rider의 C#/.NET·Unreal C++) | 간결한 `kind name @ file:line` 테이블 — 소스 본문 없음 |
+
+**사용법:** 그냥 자연스럽게 — "`Editor.log` 분석해줘" / "`AMyActor` 사용처 찾아줘" — 하면 Claude가
+description으로 **자동 위임**. 또는 namespaced 이름으로 명시 호출. 3,000줄 로그 → ~300토큰, 코드베이스
+전역 검색 → `file:line` 수십 줄. `code-locator`는 Rider MCP 연결 필요, `log-analyst`는 불필요(순수 CLI).
 
 ### 명령어 & 도구
 - `/rider-mcp-enforcer:setup` — 플러그인 설정 ([설정](#설정-명령어) 참고).
@@ -198,8 +216,9 @@ rider-mcp-enforcer — cumulative token savings (vs forwarding Rider's raw respo
 #   Rider SSE 엔드포인트를 자동 탐지하고, 프로젝트 경로를 물어본 뒤 config를 기록합니다.
 ```
 
-`rider-search` MCP 서버와 도구들이 보이는지, `grep src/**/*.cpp`가 차단되며 안내 메시지가 뜨는지
-확인하세요. (각 플러그인 MCP 서버의 `npm install`은 세션 시작 시 `${CLAUDE_PLUGIN_DATA}`에 자동 실행됨.)
+`rider-search` MCP 서버와 도구들이 보이는지, `grep src/**/*.cpp`에 Rider 도구 유도 nudge가 뜨는지
+(또는 `RIDER_ENFORCE=block`이면 차단) 확인하세요. (각 플러그인 MCP 서버의 `npm install`은 세션 시작 시
+`${CLAUDE_PLUGIN_DATA}`에 자동 실행됨.)
 
 > **명령어가 안 보이면?** 대개 플러그인이 **설치 안 된 채 마켓플레이스만 add**된 상태입니다.
 > `marketplace add`/`update`는 카탈로그만 갱신합니다 — 반드시 위의 `/plugin install`을 실행하세요.
@@ -265,7 +284,7 @@ Claude Code는 마켓플레이스 repo를 캐시하므로 새 커밋이 **자동
 | `RIDER_EXCLUDE_OFF` | `0` | `1`/`true`/`on`이면 제외 경로도 결과에 포함. |
 | `RIDER_SUMMARIZE_TOOLS` | _(자동)_ | 선택 **제한** 필터 — 요약 허용할 도구 이름 콤마 목록. 기본은 **list 형태 응답이면 무엇이든** 요약(이름이 아니라 응답 형태로 판단) → `read_file` 같은 비-list 도구는 절대 안 건드리고 Rider 도구 rename도 설정 불필요. |
 | `RIDER_STATS_FILE` | `~/.rider-mcp-enforcer/stats.json` | 누적 토큰 절감 ledger 파일 경로. |
-| `RIDER_ENFORCE` | `1` | `0`/`false`/`off`이면 **grep 차단 훅 비활성** — Rider MCP가 꺼져 있어 코드 검색이 막히는 걸 원치 않을 때 사용. |
+| `RIDER_ENFORCE` | `warn` | `warn`(기본)=실행+nudge, `block`=하드 차단, `0`/`off`=훅 완전 비활성(Rider MCP가 꺼져 있을 때 등). |
 
 ## 강제(enforcement) 동작 방식
 
@@ -305,15 +324,14 @@ Claude Code에서 `rider-search` 서버가 실제 Rider 도구들(`search_symbol
 | "rider-search-proxy is not connected to Rider" 반환 | `RIDER_MCP_SSE_URL` 미설정/도달불가 | Copy SSE Config로 설정; `curl`로 확인. |
 | "Unable to determine the target project" 반환 | 여러 프로젝트가 열려 있고 `projectPath` 없음 | `RIDER_PROJECT_PATH`를 프로젝트 루트로 설정하거나 호출마다 `projectPath` 전달. |
 | "`projectPath`=… doesn't correspond to any open project" 반환 | 그 프로젝트가 **Rider에 안 열려 있음** | Rider MCP는 IDE에 열린 프로젝트만 검색. 해당 프로젝트를 Rider에서 열고(인덱싱 완료) 재시도. |
-| **코드 검색은 차단되는데 Rider 도구도 안 됨** (MCP 꺼짐 → 막힘) | Rider 불가 상태에서 훅이 grep 차단 | `RIDER_ENFORCE=0`으로 차단 해제(또는 플러그인 비활성). |
-| 원하던 검색을 훅이 차단 | 코드 경로 오탐 | 비코드 파일 대상으로 재실행하거나 해당 세션 `RIDER_ENFORCE=0`. |
+| 원하던 grep인데 nudge가 뜸 | 훅이 Rider로 유도 중 | 기본 `warn`은 명령을 **실행함** — nudge는 따르거나 무시하면 됨. 완전히 끄려면 `RIDER_ENFORCE=0`. |
+| `RIDER_ENFORCE=block`이 검색을 막는데 Rider도 불가 | 하드 차단 opt-in했는데 MCP 꺼짐 | MCP 켤 때까지 `RIDER_ENFORCE=0`(또는 `warn`). |
 | 요약이 틀리거나 빔 | Rider 도구 이름이 기본값과 다르거나 응답 형식이 특이 | `RIDER_SUMMARIZE_TOOLS`를 빌드의 실제 도구 이름으로 설정; `RIDER_MAX_RESULTS` 조정. |
 | SSE URL에 `curl`이 연결 거부 | Rider 미실행, MCP 꺼짐, 또는 포트 오류 | Rider 실행, MCP 활성화, SSE config 재복사. |
 | `Dependency "gamedev-log-analyzer@rider-mcp-enforcer" is not found in any configured marketplace` (Plugin Errors 패널) | **마켓플레이스 캐시가 낡음** — `ue-log-analyzer`→`gamedev-log-analyzer` rename 후, 갱신된 `plugin.json`은 새 의존성 이름을 가리키는데 캐시된 카탈로그는 옛 이름만 가지고 있음 | 카탈로그 갱신 후 리로드: `/plugin marketplace update rider-mcp-enforcer` → `/reload-plugins` (패널이 계속 뜨면 Claude Code 재시작). 남은 `ue-log-analyzer` 설치본은 무해 — `claude plugin prune`으로 제거. |
 
-> **꺼진-MCP 함정:** MCP가 꺼지면 프록시는 "not connected"를 반환하고 *동시에* 훅이 code-grep을
-> 차단 → Claude가 검색할 방법이 없어집니다. 훅은 바로 이 경우를 위해 `RIDER_ENFORCE=0`을 지원합니다
-> (MCP를 켤 때까지 grep을 폴백으로 허용).
+> **MCP 꺼짐?** 기본값에선 함정 없음 — 훅의 기본 `warn`은 grep을 항상 실행시키므로 Rider MCP가
+> 불가해도 Claude가 검색 가능. `RIDER_ENFORCE=block`만 차단함 — 그 경우 `RIDER_ENFORCE=0`(또는 `warn`).
 
 ## 상태 / 주의
 
