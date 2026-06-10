@@ -159,18 +159,28 @@ const jsonlOk = /(^|\n)100\t10\.0\t400\t/.test(jsonlOut) && /\t5\.00$/.test(json
 // Log-grep enforcement: the PreToolUse hook must catch raw Bash log reads (grep/tail/cat over
 // .log/.jsonl/Logs) and steer them to gamedev-log, while leaving code grep and non-log reads alone.
 const enfCases = [
-  ["tail -3 Saved/Logs/Editor.log | grep -cE error", true], // the exact incident pattern
+  // unbounded reads of a log = floods → block
   ["grep -i warning build.log", true],
   ["cat crash.jsonl", true],
   ["rg pattern G:/Proj/Saved/Logs/run.log", true],
+  ["tail -n 5000 build.log", true], // large -n → flood
+  ["tail -f Saved/Logs/Editor.log", true], // live stream → unbounded
+  ["tail -n +1 build.log", true], // from line 1 to EOF → whole file
+  // bounded peeks / count-only reads can't flood → pass (mirrors the Read slice escape)
+  ["tail -3 Saved/Logs/Editor.log | grep -cE error", false], // the original incident — 3 lines + a count
+  ["tail -8 build.log", false],
+  ["head -20 Saved/Logs/Editor.log", false],
+  ["tail build.log", false], // default 10 lines
+  ["grep -c error build.log", false], // count only = one number
+  // non-log / non-read-exec → pass
   ["grep TODO src/Foo.cpp", false], // code file, not a log
   ["node server/cli.js search --path x.log", false], // analyzer's own call (node, not a read exec)
   ["head -20 notes.txt", false], // txt is not a log
   ["ls Logs/", false], // ls is not a read-exec
-  // variable indirection: path in the assignment, read in a later segment (the founding pattern)
-  ['log="/p/Saved/Logs/Editor.log"; tail -3 "$log" | grep -cE error', true],
-  ['L="/p/run.jsonl"; grep err "$L"', true],
-  ['log=/p/x.log; cat "$log"', true], // bareword RHS, deref
+  // variable indirection: path in the assignment, read in a later segment
+  ['log=/p/x.log; cat "$log"', true], // bareword RHS, deref, full cat → block
+  ['L="/p/run.jsonl"; grep err "$L"', true], // unbounded grep of a var-bound log → block
+  ['log="/p/x.log"; tail -8 "$log"', false], // var-bound but bounded peek → pass
   ['log="/p/x.log"; echo "$log"', false], // echo is not a read-exec → not a flood
   ['f="notes.txt"; cat "$f"', false], // var bound to a non-log → precise, no block
   ['tail -3 "$log" | grep err', false], // $log never bound → unknown, allow

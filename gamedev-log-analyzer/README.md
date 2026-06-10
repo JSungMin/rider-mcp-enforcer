@@ -109,11 +109,14 @@ Reading a log with `tail … | grep …` — or opening a multi-MB log with the 
 lines straight into the model's context, exactly what this tool exists to avoid. A `PreToolUse` hook
 closes both gaps:
 
-- **Bash**: a raw read (`grep`/`rg`/`ack`/`ag`/`findstr`/`tail`/`head`/`cat`) of a **log target**
-  (`.log`, `.jsonl`, rotated `.log.N`, or a path under `Logs/` / `Saved/Logs/`) is intercepted —
-  including when the path is held in a shell variable (`log="….log"; tail -3 "$log" | grep err`), where
-  the read and the path live in different segments. (A non-`.log`/`.jsonl` extension like `.output` is
-  **not** matched unless it sits under a `Logs/` path — by design, since it can't be size-gated on Bash.)
+- **Bash**: an **unbounded** read (`cat`, a bare `grep`/`rg`, `tail -f`, `tail -n +N`, or a large
+  `tail -n N`) of a **log target** (`.log`, `.jsonl`, rotated `.log.N`, or a path under `Logs/` /
+  `Saved/Logs/`) is intercepted — including when the path is held in a shell variable
+  (`log="….log"; cat "$log"`), where the read and the path live in different segments. A **bounded
+  peek** — `tail`/`head` of ≤ 50 lines (default 10), or a count-only `grep -c`/`rg -c` — **passes**,
+  since its output is a handful of lines or a single number, not a context flood (the Bash analogue of
+  the Read-slice escape). (A non-`.log`/`.jsonl` extension like `.output` is **not** matched unless it
+  sits under a `Logs/` path — by design, since it can't be size-gated on Bash.)
 - **Read tool**: an **unbounded** read of a **large** log file (≥ 200 KB) is intercepted. A *sliced*
   read (`offset`/`limit` present) always passes — that's a one-step escape and the fallback for any
   format the analyzer parses poorly, so a blocked Read never strands you. Small logs (< 200 KB) pass

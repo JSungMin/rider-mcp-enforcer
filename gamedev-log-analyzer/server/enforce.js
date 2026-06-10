@@ -36,10 +36,37 @@ function hasLogTarget(s) {
   );
 }
 
+// A small bounded peek (`tail -8`, `head -20`, default-10 `tail`) or a count-only read (`grep -c`,
+// `rg -c`) cannot flood context regardless of file size — its output is a handful of lines or a single
+// number. Blocking it would be friction with zero token win (violates token-first), so it passes. This
+// mirrors the Read-tool slice escape (offset/limit always allowed). Unbounded reads — `cat`, a bare
+// `grep`, `tail -f`, `tail -n +N` (from a line to EOF), a large `-n N`, or `tail -c <bigbytes>` — still
+// block, since those are the actual floods the analyzer exists to replace.
+const BOUNDED_PEEK_LINES = 50;
+const BOUNDED_PEEK_BYTES = 8192;
+export function isBoundedRead(segment) {
+  const exec = execOf(segment);
+  const s = String(segment);
+  // count-only matchers: output is a count, never a line dump (findstr has no count flag).
+  if ((exec === "grep" || exec === "rg") && /(^|\s)(-c|--count)\b/.test(s)) return true;
+  if (exec === "tail" || exec === "head") {
+    if (/(^|\s)(-f|--follow)\b/.test(s)) return false; // live stream — unbounded
+    if (/-n\s*\+\d+|--lines[=\s]+\+\d+/.test(s)) return false; // tail -n +N → reads to EOF
+    const mc = s.match(/-c\s*(\d+)|--bytes[=\s]+(\d+)/); // byte count
+    if (mc) return Number(mc[1] || mc[2]) <= BOUNDED_PEEK_BYTES;
+    const m =
+      s.match(/--lines[=\s]+(\d+)/) || s.match(/-n\s*(\d+)/) || s.match(/(?:^|\s)-(\d+)\b/);
+    const n = m ? Number(m[1]) : 10; // tail/head default to 10 lines
+    return n <= BOUNDED_PEEK_LINES;
+  }
+  return false;
+}
+
 export function isLogReadSegment(segment) {
   const exec = execOf(segment);
   if (!READ_EXECS.has(exec)) return false;
-  return hasLogTarget(String(segment).toLowerCase());
+  if (!hasLogTarget(String(segment).toLowerCase())) return false;
+  return !isBoundedRead(segment); // a bounded peek / count-only read isn't a flood
 }
 
 // A bare file path that is a log target (for the Read-tool branch, where there's no shell exec).
@@ -100,7 +127,8 @@ export function shouldBlockLogBash(cmd) {
   return segments.some((seg) => {
     if (!seg.trim()) return false;
     if (isLogReadSegment(seg)) return true; // direct log-path literal in a read-exec segment
-    return READ_EXECS.has(execOf(seg)) && segDerefsLogVar(seg, logVars); // var-bound log path
+    // var-bound log path — same bounded-peek exemption as the direct case
+    return READ_EXECS.has(execOf(seg)) && !isBoundedRead(seg) && segDerefsLogVar(seg, logVars);
   });
 }
 
