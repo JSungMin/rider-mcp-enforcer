@@ -26,6 +26,18 @@ This Rider MCP build has **no semantic find-references/find-usages tool**. To fi
 `search_text`/`search_regex` on the symbol name (string match, like grep but indexed + token-capped).
 Don't claim semantic usage results you didn't get.
 
+## Inline lookup vs. delegating to the `code-locator` subagent
+- One or two quick lookups whose results you want in front of you: call the Rider tool inline. That's
+  the cheapest path. A subagent spends ~15k tokens of its own to hand back ~300, so it's wasteful for a
+  single lookup.
+- The moment you reach a third *related* lookup, or you already know this is a multi-step trace (find
+  the symbol, then its callers, then where those are declared), hand the whole investigation to the
+  `code-locator` subagent in one call. It runs every lookup in its own context and returns one compact
+  `file:line` table, so the raw results never pile up in yours.
+- Rule of thumb: inline for 1–2; batch-delegate at 3+ related lookups or any multi-step trace. Don't
+  spawn a subagent for a single lookup, and don't run ten sequential inline lookups when one delegation
+  would do. "Related" is the signal — count alone doesn't decide it.
+
 ## Incomplete results — STOP and ask the user
 If a tool result contains a `⚠ INCOMPLETE RESULTS` banner, the proxy already auto-raised the limit
 once and the match set is STILL not exhaustive. You are seeing a partial list.
