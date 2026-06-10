@@ -110,7 +110,10 @@ lines straight into the model's context, exactly what this tool exists to avoid.
 closes both gaps:
 
 - **Bash**: a raw read (`grep`/`rg`/`ack`/`ag`/`findstr`/`tail`/`head`/`cat`) of a **log target**
-  (`.log`, `.jsonl`, rotated `.log.N`, or a path under `Logs/` / `Saved/Logs/`) is intercepted.
+  (`.log`, `.jsonl`, rotated `.log.N`, or a path under `Logs/` / `Saved/Logs/`) is intercepted —
+  including when the path is held in a shell variable (`log="….log"; tail -3 "$log" | grep err`), where
+  the read and the path live in different segments. (A non-`.log`/`.jsonl` extension like `.output` is
+  **not** matched unless it sits under a `Logs/` path — by design, since it can't be size-gated on Bash.)
 - **Read tool**: an **unbounded** read of a **large** log file (≥ 200 KB) is intercepted. A *sliced*
   read (`offset`/`limit` present) always passes — that's a one-step escape and the fallback for any
   format the analyzer parses poorly, so a blocked Read never strands you. Small logs (< 200 KB) pass

@@ -64,11 +64,44 @@ export function shouldBlockRead(filePath, sizeBytes, sliced) {
   return Number(sizeBytes) >= READ_MIN_BYTES;
 }
 
-// True if ANY shell segment of the command is a raw log read (so `tail x.log | grep err` is caught
-// even though the grep half has no filename — the tail half does).
+// Shell variables assigned a LOG-PATH literal anywhere in the command. This closes the indirection
+// hole: `log="…/Editor.log"; tail -3 "$log" | grep err` puts the path in the ASSIGNMENT segment and the
+// read in a LATER segment, so per-segment matching alone misses it. We bind the var to the log here,
+// then a read-exec that dereferences that exact var counts as a log read. High precision: we require
+// BOTH a log-literal RHS AND a deref-by-a-read-exec (a bare `echo "$log"` is not a flood, not blocked).
+// The boundary `(?:^|[\s;&|(])` avoids matching inside `--flag=x.log` (no var binding for CLI flags).
+export function collectLogVars(cmd) {
+  const vars = new Set();
+  const re = /(?:^|[\s;&|(])([A-Za-z_][A-Za-z0-9_]*)=(?:"([^"]*)"|'([^']*)'|([^\s;&|]*))/g;
+  let m;
+  while ((m = re.exec(String(cmd || ""))) !== null) {
+    const rhs = m[2] !== undefined ? m[2] : m[3] !== undefined ? m[3] : m[4] || "";
+    if (rhs && hasLogTarget(rhs.toLowerCase())) vars.add(m[1]);
+  }
+  return vars;
+}
+
+// Does this segment dereference one of the bound log-vars ($VAR, ${VAR}, "$VAR")?
+function segDerefsLogVar(segment, vars) {
+  if (!vars.size) return false;
+  const re = /\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?/g;
+  let m;
+  while ((m = re.exec(String(segment))) !== null) if (vars.has(m[1])) return true;
+  return false;
+}
+
+// True if ANY shell segment is a raw log read — either a direct literal in a read-exec segment
+// (`tail x.log | grep err`), or a read-exec dereferencing a var bound to a log path earlier in the
+// command (`log="x.log"; tail "$log"`).
 export function shouldBlockLogBash(cmd) {
-  const segments = String(cmd || "").split(/\|\||&&|[|;&\n]/g);
-  return segments.some((seg) => seg.trim() && isLogReadSegment(seg));
+  const c = String(cmd || "");
+  const segments = c.split(/\|\||&&|[|;&\n]/g);
+  const logVars = collectLogVars(c);
+  return segments.some((seg) => {
+    if (!seg.trim()) return false;
+    if (isLogReadSegment(seg)) return true; // direct log-path literal in a read-exec segment
+    return READ_EXECS.has(execOf(seg)) && segDerefsLogVar(seg, logVars); // var-bound log path
+  });
 }
 
 // ---- mode (env > config.json > default) ----

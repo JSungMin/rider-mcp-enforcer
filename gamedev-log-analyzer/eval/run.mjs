@@ -167,6 +167,13 @@ const enfCases = [
   ["node server/cli.js search --path x.log", false], // analyzer's own call (node, not a read exec)
   ["head -20 notes.txt", false], // txt is not a log
   ["ls Logs/", false], // ls is not a read-exec
+  // variable indirection: path in the assignment, read in a later segment (the founding pattern)
+  ['log="/p/Saved/Logs/Editor.log"; tail -3 "$log" | grep -cE error', true],
+  ['L="/p/run.jsonl"; grep err "$L"', true],
+  ['log=/p/x.log; cat "$log"', true], // bareword RHS, deref
+  ['log="/p/x.log"; echo "$log"', false], // echo is not a read-exec → not a flood
+  ['f="notes.txt"; cat "$f"', false], // var bound to a non-log → precise, no block
+  ['tail -3 "$log" | grep err', false], // $log never bound → unknown, allow
 ];
 const enforceClassifyOk = enfCases.every(([c, exp]) => shouldBlockLogBash(c) === exp);
 const enforceModeOk =
