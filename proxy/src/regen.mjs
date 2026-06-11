@@ -150,6 +150,24 @@ export function tailLines(output, n = 25) {
   return lines.slice(-n).join("\n");
 }
 
+// Post-regen verification (option V): after a confirmed regen, the proxy re-probes Rider for the file
+// that was missing. verdict: {visible:true} = Rider sees it now, {visible:false} = still missing, null =
+// couldn't check (Rider not connected / probe failed). Turns "did the reload take?" from a guess into a
+// checked next step. (Rider exposes no reload trigger, so we can verify but not force the reload.)
+export function verifyNote(verifyPath, verdict) {
+  if (!verifyPath) return "";
+  if (!verdict) {
+    return `\n\n(Could not verify ${verifyPath} — Rider isn't connected or the probe failed. After Rider reloads, re-run your search.)`;
+  }
+  if (verdict.visible) {
+    return `\n\n✓ Verified: Rider now sees ${verifyPath} — the reload already took effect; your search / rename_refactoring should resolve it.`;
+  }
+  return (
+    `\n\n✗ Rider still does NOT see ${verifyPath} — it hasn't reloaded the regenerated project yet. ` +
+    `Accept Rider's reload prompt (or File → Reload All from Disk / Unreal "Refresh"), then re-run your search.`
+  );
+}
+
 export function lockPath(configDir, uproject) {
   const h = crypto.createHash("sha1").update(uproject.toLowerCase()).digest("hex").slice(0, 12);
   return path.join(configDir, `regen-${h}.lock`);

@@ -16,6 +16,7 @@ import {
   tailLines,
   planRegen,
   regenProject,
+  verifyNote,
 } from "../src/regen.mjs";
 
 const uproot = "C:/Proj";
@@ -166,6 +167,14 @@ test("regenProject: a non-zero exit surfaces scanned errors, not just a tail", (
   assert.match(out.content[0].text, /Unable to find module X/);
   assert.equal(out.isError, true);
   try { fs.rmSync(tmpCfg, { recursive: true, force: true }); } catch { /* ignore */ }
+});
+
+test("verifyNote: visible / missing / unknown / no-path", () => {
+  assert.equal(verifyNote("", { visible: true }), "", "no verifyPath → no note");
+  assert.match(verifyNote("A.cpp", { visible: true }), /Rider now sees A\.cpp/);
+  assert.match(verifyNote("A.cpp", { visible: false }), /still does NOT see/);
+  assert.match(verifyNote("A.cpp", { visible: false }), /Reload All from Disk/);
+  assert.match(verifyNote("A.cpp", null), /Could not verify/);
 });
 
 test("regenProject: refuses when a regen lock is already present (unless force)", () => {

@@ -25,7 +25,12 @@ without `confirm` only shows the plan; pass `confirm:true` to execute. `force:tr
 **After a successful regen, Rider must RELOAD the solution before its symbol index updates** — accept
 Rider's reload prompt (it detects the `.vcxproj` change), or do it manually: **File → Reload All from
 Disk** (or Unreal **Refresh**). Only then do `search_symbol` / `rename_refactoring` resolve the new
-files. (A regen exiting 0 means the generator ran, not that Rider re-indexed.)
+files. (A regen exiting 0 means the generator ran, not that Rider re-indexed. Rider exposes no reload
+trigger, so this step is manual.)
+
+To check whether the reload took: call the **MCP tool** with `verifyPath:"<the file that was missing>"`
+and `confirm:true` — after the regen it re-probes Rider and reports **✓** (visible now) or **✗** (still
+missing → reload + retry). Verification needs Rider connected, so it's only on the MCP tool, not the CLI.
 
 Notes:
 - Auto-detect is **Windows-only**; on macOS/Linux set `RIDER_REGEN_CMD` to your `GenerateProjectFiles.sh`

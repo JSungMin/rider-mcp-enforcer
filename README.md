@@ -155,7 +155,11 @@ case and points at a regenerate step. It is **dry-run-first**: nothing runs unti
 
 **After a successful regen, Rider must reload the solution** (accept its prompt, or **File → Reload All
 from Disk** / Unreal **Refresh**) before the symbol index updates and `search_symbol`/`rename_refactoring`
-resolve the new files — exiting 0 means the generator ran, not that Rider re-indexed.
+resolve the new files — exiting 0 means the generator ran, not that Rider re-indexed. (Rider exposes no
+reload trigger, so the plugin can't click it for you.) Pass `verifyPath:"<the file that was missing>"` to
+the **MCP tool** and, after a confirmed regen, it re-probes Rider and reports whether the reload took
+(**✓** visible / **✗** still missing → reload and retry). Verification needs Rider connected, so it's
+MCP-tool-only (not the CLI).
 >
 > **Two real limitations of this Rider MCP build (verified live):**
 > 1. **No semantic find-usages/find-references tool.** Reference-finding falls back to `search_text`/
