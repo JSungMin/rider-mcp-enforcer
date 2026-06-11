@@ -16,6 +16,7 @@ import {
   tailLines,
   planRegen,
   regenProject,
+  verifyNote,
 } from "../src/regen.mjs";
 
 const uproot = "C:/Proj";
@@ -130,8 +131,25 @@ test("regenProject: confirm:true runs and reports success + re-run advisory", ()
   });
   assert.equal(spawned, true);
   assert.match(out.content[0].text, /OK/);
-  assert.match(out.content[0].text, /RE-RUN your original search/);
+  assert.match(out.content[0].text, /reload/i, "must tell the user Rider has to reload the solution");
+  assert.match(out.content[0].text, /re-run your search/i);
   try { fs.rmSync(tmpCfg, { recursive: true, force: true }); } catch { /* ignore */ }
+});
+
+test("regenProject: RIDER_REGEN_CMD WITHOUT confirm is still a DRY RUN (config picks the command, not whether to run)", () => {
+  let spawned = false;
+  const out = regenProject({}, {
+    projectPath: uproot,
+    readdir: () => ["Game.uproject"],
+    regenCmd: "gen.bat -p={uproject}",
+    engineOverride: "C:/UE",
+    spawn: () => {
+      spawned = true;
+      return { status: 0 };
+    },
+  });
+  assert.equal(spawned, false, "no confirm → must not execute even with RIDER_REGEN_CMD");
+  assert.match(out.content[0].text, /DRY RUN/);
 });
 
 test("regenProject: a non-zero exit surfaces scanned errors, not just a tail", () => {
@@ -149,6 +167,14 @@ test("regenProject: a non-zero exit surfaces scanned errors, not just a tail", (
   assert.match(out.content[0].text, /Unable to find module X/);
   assert.equal(out.isError, true);
   try { fs.rmSync(tmpCfg, { recursive: true, force: true }); } catch { /* ignore */ }
+});
+
+test("verifyNote: visible / missing / unknown / no-path", () => {
+  assert.equal(verifyNote("", { visible: true }), "", "no verifyPath → no note");
+  assert.match(verifyNote("A.cpp", { visible: true }), /Rider now sees A\.cpp/);
+  assert.match(verifyNote("A.cpp", { visible: false }), /still does NOT see/);
+  assert.match(verifyNote("A.cpp", { visible: false }), /Reload All from Disk/);
+  assert.match(verifyNote("A.cpp", null), /Could not verify/);
 });
 
 test("regenProject: refuses when a regen lock is already present (unless force)", () => {

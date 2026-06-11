@@ -8,9 +8,9 @@
 //
 // SAFETY (per critic gate). This spawns a multi-minute, side-effecting build tool, and the author can't
 // live-test against a real UE install, so the defaults are built to FAIL VISIBLY, never silently-wrong:
-//   - DRY-RUN FIRST: auto-detected commands are NOT executed on the first call. The tool returns a PLAN
-//     (resolved uproject + engine + how it was resolved + the exact command) and stops. Execution needs
-//     an explicit `confirm:true`. A pre-configured RIDER_REGEN_CMD is treated as already-trusted intent.
+//   - DRY-RUN FIRST: a call WITHOUT `confirm:true` never executes — it returns a PLAN (resolved uproject
+//     + engine + how it was resolved + the exact command) and stops. Execution always needs an explicit
+//     `confirm:true`, even when RIDER_REGEN_CMD is set (config picks WHICH command, not WHETHER to run).
 //   - CONCURRENCY LOCK: a lockfile keyed by the uproject path; refuse if a regen is already running
 //     (overridable with force:true) so two writers can't corrupt the .sln/.vcxproj.
 //   - LAUNCHER → UnrealVersionSelector (it resolves the correct engine ITSELF from EngineAssociation),
@@ -150,6 +150,24 @@ export function tailLines(output, n = 25) {
   return lines.slice(-n).join("\n");
 }
 
+// Post-regen verification (option V): after a confirmed regen, the proxy re-probes Rider for the file
+// that was missing. verdict: {visible:true} = Rider sees it now, {visible:false} = still missing, null =
+// couldn't check (Rider not connected / probe failed). Turns "did the reload take?" from a guess into a
+// checked next step. (Rider exposes no reload trigger, so we can verify but not force the reload.)
+export function verifyNote(verifyPath, verdict) {
+  if (!verifyPath) return "";
+  if (!verdict) {
+    return `\n\n(Could not verify ${verifyPath} — Rider isn't connected or the probe failed. After Rider reloads, re-run your search.)`;
+  }
+  if (verdict.visible) {
+    return `\n\n✓ Verified: Rider now sees ${verifyPath} — the reload already took effect; your search / rename_refactoring should resolve it.`;
+  }
+  return (
+    `\n\n✗ Rider still does NOT see ${verifyPath} — it hasn't reloaded the regenerated project yet. ` +
+    `Accept Rider's reload prompt (or File → Reload All from Disk / Unreal "Refresh"), then re-run your search.`
+  );
+}
+
 export function lockPath(configDir, uproject) {
   const h = crypto.createHash("sha1").update(uproject.toLowerCase()).digest("hex").slice(0, 12);
   return path.join(configDir, `regen-${h}.lock`);
@@ -224,8 +242,10 @@ export function regenProject(args = {}, ctx = {}) {
   if (planned.error) return text(`rider_regen_project: ${planned.error}`, true);
   const { plan } = planned;
 
-  // Execute only on explicit confirm, OR when the user pre-configured RIDER_REGEN_CMD (trusted intent).
-  const willRun = args.confirm === true || plan.preTrusted;
+  // Execute ONLY on explicit confirm — always, even with a pre-set RIDER_REGEN_CMD. The config only
+  // decides WHICH command runs, never WHETHER to run; "no confirm" is always a dry run. (This is the
+  // dry-run-first safety gate; it also keeps the CLI's "nothing executed" message honest.)
+  const willRun = args.confirm === true;
   if (!willRun) return text(planText(plan, { willRun: false }));
 
   // Concurrency lock: never let two regens write the .sln/.vcxproj at once.
@@ -272,7 +292,10 @@ export function regenProject(args = {}, ctx = {}) {
   }
   return text(
     `rider_regen_project OK — project files regenerated.\n  command: ${cmdLine}\n  engine : ${plan.engineDir} [${plan.how}]\n` +
-      `Now RE-RUN your original search/read to confirm the file is visible. (Exit 0 means the generator ran, ` +
-      `not that Rider has finished re-indexing — if it's still missing, the resolved engine may be wrong.)`
+      `NEXT: Rider must RELOAD the solution to pick up the new project files before its index updates — ` +
+      `accept Rider's reload prompt (it usually detects the .vcxproj change), or do it manually via ` +
+      `File → Reload All from Disk (or Unreal "Refresh"). THEN re-run your search / rename_refactoring to ` +
+      `confirm the symbol resolves. (Exit 0 means the generator ran, NOT that Rider has re-indexed; if the ` +
+      `file is still missing after a reload, the resolved engine above may be wrong.)`
   );
 }

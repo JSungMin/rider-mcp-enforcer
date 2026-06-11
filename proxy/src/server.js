@@ -32,7 +32,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { regenProject } from "./regen.mjs";
+import { regenProject, verifyNote } from "./regen.mjs";
 
 // Settings come from (highest precedence first): environment variable > config file
 // (~/.rider-mcp-enforcer/config.json, written by the setup command) > built-in default.
@@ -454,6 +454,39 @@ async function main() {
     return null;
   });
 
+  // Option V — best-effort re-probe: does Rider's project model now contain the file at `p`? Searches by
+  // basename (find_files_by_name_keyword / search_file — robust to the pathInProject base quirk that makes
+  // get_file_text_by_path unreliable). Returns {visible} or null (Rider down / probe failed / unknown).
+  async function riderSeesFile(p) {
+    if (!rider) return null;
+    const base = String(p || "").replace(/\\/g, "/").split("/").filter(Boolean).pop();
+    if (!base) return null;
+    const baseLc = base.toLowerCase();
+    for (const attempt of [
+      { name: "find_files_by_name_keyword", arguments: { keyword: base, projectPath: PROJECT_PATH || undefined } },
+      { name: "search_file", arguments: { query: base, projectPath: PROJECT_PATH || undefined } },
+    ]) {
+      try {
+        const r = await rider.callTool(attempt);
+        const info = parseSearch(r);
+        if (info) {
+          return {
+            visible: info.items.some((it) =>
+              String(it.filePath ?? it.path ?? it.pathInProject ?? "").replace(/\\/g, "/").toLowerCase().endsWith(baseLc)
+            ),
+          };
+        }
+        const txt = ((r && r.content) || []).map((c) => (c && c.text) || "").join("\n");
+        if (txt && !/does(?:n'?t| not)\s*exist|not found|no such|unknown tool/i.test(txt)) {
+          return { visible: txt.toLowerCase().includes(baseLc) };
+        }
+      } catch {
+        /* try the next probe tool */
+      }
+    }
+    return null;
+  }
+
   const server = new Server(
     { name: "rider-search", version: "0.1.0" },
     { capabilities: { tools: {} } }
@@ -519,15 +552,17 @@ async function main() {
       description:
         "Regenerate Unreal project files so Rider re-indexes after source files were added/moved/renamed " +
         "(fixes 'doesn't exist'/empty search results from a stale project model). SAFE BY DEFAULT: the " +
-        "first call is a DRY RUN that resolves the .uproject + engine + exact command and shows them — it " +
-        "runs nothing. Review, then call again with confirm:true to execute. Auto-detect is Windows-only; " +
-        "set RIDER_REGEN_CMD / RIDER_ENGINE_PATH if resolution is wrong.",
+        "call WITHOUT confirm is a DRY RUN that resolves the .uproject + engine + exact command and shows " +
+        "them — it runs nothing. Review, then call again with confirm:true to execute (confirm is required " +
+        "even with RIDER_REGEN_CMD). Auto-detect is Windows-only; set RIDER_REGEN_CMD / RIDER_ENGINE_PATH " +
+        "if resolution is wrong. Prefer no MCP shell-approval prompt? Run the CLI: node <plugin>/proxy/regen.mjs.",
       inputSchema: {
         type: "object",
         properties: {
           projectPath: { type: "string", description: "Project root or .uproject (else RIDER_PROJECT_PATH)" },
           confirm: { type: "boolean", description: "Actually run the regen (default false = dry run)" },
           force: { type: "boolean", description: "Run even if a regen lock is present" },
+          verifyPath: { type: "string", description: "After a confirmed regen, re-probe Rider for this file and report whether it's now visible (needs Rider connected). Pass the path that was missing." },
         },
       },
     },
@@ -607,14 +642,25 @@ async function main() {
       return { content: [{ type: "text", text: "rider-mcp-enforcer savings ledger reset." }] };
     }
     if (req.params.name === "rider_regen_project") {
-      // Works without Rider connected (it shells out to the engine's generator, not Rider).
-      return regenProject(req.params.arguments || {}, {
+      const a = req.params.arguments || {};
+      // The regen itself shells out to the engine's generator (works without Rider connected).
+      let res = regenProject(a, {
         projectPath: PROJECT_PATH,
         configDir: CONFIG_DIR,
         regenCmd: REGEN_CMD,
         engineOverride: ENGINE_PATH,
         timeoutMs: REGEN_TIMEOUT,
       });
+      // Option V — verify: after a real, successful run, re-probe Rider for the previously-missing file
+      // (Rider exposes no reload trigger, so we verify rather than force). Best-effort: any failure → null.
+      if (a.confirm === true && !res.isError && a.verifyPath && rider) {
+        const verdict = await riderSeesFile(a.verifyPath);
+        const note = verifyNote(a.verifyPath, verdict);
+        if (note && Array.isArray(res.content) && res.content[0]) {
+          res = { ...res, content: [{ ...res.content[0], text: (res.content[0].text || "") + note }, ...res.content.slice(1)] };
+        }
+      }
+      return res;
     }
     if (!rider) return SETUP_RESULT;
     const { name } = req.params;
