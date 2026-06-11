@@ -9,6 +9,7 @@ import path from "node:path";
 import { analyzeLog, extractFields, parseLine, diffLogs, locateLog, readText } from "../server/logs.js";
 import { runTool } from "../server/core.js";
 import { shouldBlockLogBash, normalizeMode, shouldBlockRead, nudgeText, READ_MIN_BYTES } from "../server/enforce.js";
+import { analyzeJsonl as discoverJsonl, formatGamedevReport } from "../server/discover.mjs";
 
 // Deterministic synthetic UE-style log (generic names only).
 function makeLog(n) {
@@ -225,6 +226,24 @@ const nudgeOk =
   /gamedev-log (summary|search)/.test(nudgeText("x.log", "read"));
 const enforceOk = enforceClassifyOk && enforceModeOk && enforceStatusOk && readClassifyOk && nudgeOk;
 
+// discover: scans Claude Code transcripts for raw log reads that bypassed gamedev-log. Synthetic JSONL
+// with secret tokens → must count bypass/captured AND leak NONE of the proprietary tokens (security gate).
+const SECRETS = ["TopSecretProj", "Saved/Logs/Hush.log", "ClassifiedActor"];
+const discTranscript = [
+  { message: { content: [{ type: "tool_use", id: "a", name: "Bash", input: { command: `grep error ${SECRETS[1]}` } }] } },
+  { message: { content: [{ type: "tool_result", tool_use_id: "a", content: `${SECRETS[2]} ${SECRETS[0]} error`.repeat(80) }] } },
+  { message: { content: [{ type: "tool_use", id: "b", name: "Bash", input: { command: "gamedev-log search --path Editor.log" } }] } },
+  { message: { content: [{ type: "tool_result", tool_use_id: "b", content: "summary" }] } },
+].map((r) => JSON.stringify(r)).join("\n");
+const disc = discoverJsonl(discTranscript);
+const discReport = formatGamedevReport(disc);
+const discCountsOk = disc.bypass.bashlog && disc.bypass.bashlog.count === 1 && disc.capturedCount === 1;
+const discSanitized = SECRETS.every((s) => !discReport.includes(s)); // SECURITY: no proprietary token in output
+const discFormatGuard = /format not recognized/.test(
+  formatGamedevReport(discoverJsonl(JSON.stringify({ other: "x" })))
+); // non-empty + zero tool_use → not a fake "0 efficient"
+const discoverOk = discCountsOk && discSanitized && discFormatGuard;
+
 const rows = [
   ["parse coverage", (coverage * 100).toFixed(1) + "%", "≥ 95%", coverage >= 0.95],
   ["token reduction (callsite)", (reduction * 100).toFixed(1) + "%", "≥ 90%", reduction >= 0.9],
@@ -240,6 +259,7 @@ const rows = [
   ["multi-engine classify (synthetic)", engineOk, "true", engineOk],
   ["build code rollup (groupBy=code)", codeRollupOk, "true", codeRollupOk],
   ["log_diff code rollup (groupBy=code)", diffByCodeOk, "true", diffByCodeOk],
+  ["discover (count+sanitize+guard)", discoverOk, "true", discoverOk],
   ["enforce: bash+read+mode+nudge", enforceOk, "true", enforceOk],
   ["JSONL field extraction", jsonlOk, "true", jsonlOk],
   ["coverage hint (unknown fmt only)", covHintOk, "true", covHintOk],
