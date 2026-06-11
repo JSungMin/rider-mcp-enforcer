@@ -3,6 +3,9 @@
 // projectPath normalization (the bug that made every Rider search fail on backslash paths).
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import {
   normalizeProjectPath,
   parseSearch,
@@ -11,6 +14,9 @@ import {
   summarize,
   summarizeLines,
   looksLogTarget,
+  resolveExistingPath,
+  resultSaysMissing,
+  staleProjectNote,
 } from "../src/server.js";
 
 const BS = String.fromCharCode(92); // backslash, kept out of source literals to avoid escaping traps
@@ -80,6 +86,43 @@ test("summarize notes hidden build-artifact paths", () => {
   ];
   const text = summarize({ content: [{ type: "text", text: JSON.stringify({ items, more: false }) }] }).content[0].text;
   assert.match(text, /build-artifact\/generated path/);
+});
+
+test("resultSaysMissing detects rider 'missing path' errors only", () => {
+  assert.equal(resultSaysMissing({ content: [{ type: "text", text: "File doesn't exist" }] }), true);
+  assert.equal(resultSaysMissing({ content: [{ type: "text", text: "path is not a directory" }] }), true);
+  assert.equal(resultSaysMissing({ content: [{ type: "text", text: "cannot find the file" }] }), true);
+  assert.equal(resultSaysMissing({ content: [{ type: "text", text: "src/A.cs:1  found it" }] }), false);
+  assert.equal(resultSaysMissing(null), false);
+});
+
+test("resolveExistingPath resolves on-disk files (absolute + relative-to-project)", () => {
+  const tmp = path.join(os.tmpdir(), `rider-regen-${process.pid}-a.cpp`);
+  fs.writeFileSync(tmp, "x");
+  try {
+    assert.equal(resolveExistingPath({ filePath: tmp }), tmp.replace(/\\/g, "/"));
+    assert.equal(resolveExistingPath({ pathInProject: path.basename(tmp) }, path.dirname(tmp)), tmp.replace(/\\/g, "/"));
+    assert.equal(resolveExistingPath({ paths: [tmp] }), tmp.replace(/\\/g, "/")); // array arg
+    assert.equal(resolveExistingPath({ filePath: tmp + ".nope" }), null);
+    assert.equal(resolveExistingPath(null), null);
+  } finally {
+    fs.unlinkSync(tmp);
+  }
+});
+
+test("staleProjectNote fires ONLY when rider says missing AND the file is on disk", () => {
+  const tmp = path.join(os.tmpdir(), `rider-regen-${process.pid}-b.cpp`);
+  fs.writeFileSync(tmp, "x");
+  try {
+    const missing = { content: [{ type: "text", text: "doesn't exist" }] };
+    const ok = { content: [{ type: "text", text: "Foo.cpp:10  void Foo();" }] };
+    assert.match(staleProjectNote(missing, { filePath: tmp }), /Stale project files/);
+    assert.match(staleProjectNote(missing, { filePath: tmp }), /rider_regen_project/);
+    assert.equal(staleProjectNote(missing, { filePath: tmp + ".nope" }), "", "missing + NOT on disk → genuinely gone, no regen note");
+    assert.equal(staleProjectNote(ok, { filePath: tmp }), "", "result not missing → no note even if file exists");
+  } finally {
+    fs.unlinkSync(tmp);
+  }
 });
 
 test("looksLogTarget flags log paths/files but not source", () => {
