@@ -8,8 +8,10 @@ import os from "node:os";
 import path from "node:path";
 import { analyzeLog, extractFields, parseLine, diffLogs, locateLog, readText } from "../server/logs.js";
 import { runTool } from "../server/core.js";
-import { shouldBlockLogBash, normalizeMode, shouldBlockRead, nudgeText, READ_MIN_BYTES } from "../server/enforce.js";
+import { shouldBlockLogBash, normalizeMode, shouldBlockRead, nudgeText, READ_MIN_BYTES, buildLogRewrite } from "../server/enforce.js";
 import { analyzeJsonl as discoverJsonl, formatGamedevReport } from "../server/discover.mjs";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 // Deterministic synthetic UE-style log (generic names only).
 function makeLog(n) {
@@ -244,6 +246,41 @@ const discFormatGuard = /format not recognized/.test(
 ); // non-empty + zero tool_use → not a fake "0 efficient"
 const discoverOk = discCountsOk && discSanitized && discFormatGuard;
 
+// #1 transparent rewrite: a single clean raw log read → the gamedev-log CLI equivalent, or null when
+// ambiguous (caller falls back to warn/block — never a wrong rewrite). Mirrors vs-token-safer.
+const CLI = "/x/cli.js";
+const rwGrep = buildLogRewrite("grep error Editor.log", CLI);
+const rwCat = buildLogRewrite("cat /p/Saved/Logs/run.log", CLI);
+const rwTail = buildLogRewrite("tail -n 5000 build.log", CLI);
+const rewritePure =
+  rwGrep && rwGrep.tool === "search" && /search --path "Editor\.log" --query "error" --severityMin Verbose/.test(rwGrep.cmd) &&
+  rwCat && rwCat.tool === "summary" && /summary --path "\/p\/Saved\/Logs\/run\.log"/.test(rwCat.cmd) &&
+  rwTail && rwTail.tool === "summary" &&
+  !buildLogRewrite("grep error a.log b.log", CLI) &&   // 2 log paths → ambiguous
+  !buildLogRewrite("grep -e foo X.log", CLI) &&        // value-taking flag → bail
+  !buildLogRewrite('cat "$log"', CLI) &&               // var/quote hazard → bail
+  !buildLogRewrite("tail -8 build.log", CLI) &&        // bounded peek → leave raw
+  !buildLogRewrite("grep error notes.txt", CLI) &&     // not a log
+  !buildLogRewrite("rg -t log foo Editor.log", CLI) && // rg value flag (-t) → bail (no mis-parse)
+  !buildLogRewrite("grep error Editor.log", "");       // no cli path → null
+
+// end-to-end: the hook emits an updatedInput rewrite for a single log grep, and falls back to a warn
+// (no rewrite) for an un-rewritable var/pipeline command.
+const HOOK = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "hooks", "block-log-grep.mjs");
+const runHook = (payload, env = {}) => {
+  const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify(payload), encoding: "utf8", env: { ...process.env, ...env } });
+  return { stdout: r.stdout || "", stderr: r.stderr || "", code: r.status };
+};
+const hookRw = runHook({ tool_name: "Bash", tool_input: { command: "grep error Editor.log" } });
+const hookRewrites = hookRw.code === 0 && /"updatedInput"/.test(hookRw.stdout) && /gamedev-log search/.test(hookRw.stdout) && /node /.test(hookRw.stdout);
+const hookFb = runHook({ tool_name: "Bash", tool_input: { command: "cat build.log | grep err" } }); // pipeline flood → hit, but multi-segment → no rewrite
+const hookFallsBack = hookFb.code === 0 && /additionalContext/.test(hookFb.stdout) && !/updatedInput/.test(hookFb.stdout);
+const hookOptOut = (() => {
+  const r = runHook({ tool_name: "Bash", tool_input: { command: "grep error Editor.log" } }, { GDLOG_REWRITE: "0" });
+  return !/updatedInput/.test(r.stdout); // GDLOG_REWRITE=0 → no rewrite (warn/block instead)
+})();
+const rewriteOk = rewritePure && hookRewrites && hookFallsBack && hookOptOut;
+
 const rows = [
   ["parse coverage", (coverage * 100).toFixed(1) + "%", "≥ 95%", coverage >= 0.95],
   ["token reduction (callsite)", (reduction * 100).toFixed(1) + "%", "≥ 90%", reduction >= 0.9],
@@ -260,6 +297,7 @@ const rows = [
   ["build code rollup (groupBy=code)", codeRollupOk, "true", codeRollupOk],
   ["log_diff code rollup (groupBy=code)", diffByCodeOk, "true", diffByCodeOk],
   ["discover (count+sanitize+guard)", discoverOk, "true", discoverOk],
+  ["log-read rewrite (grep→search/cat→summary)", rewriteOk, "true", rewriteOk],
   ["enforce: bash+read+mode+nudge", enforceOk, "true", enforceOk],
   ["JSONL field extraction", jsonlOk, "true", jsonlOk],
   ["coverage hint (unknown fmt only)", covHintOk, "true", covHintOk],
