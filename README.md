@@ -104,7 +104,7 @@ actually use them instead of grep:
 
 | Layer | File | Effect |
 | --- | --- | --- |
-| **Enforcement hook** | `hooks/block-code-grep.js` | Intercepts Bash `grep`/`rg`/`find -name` over source files and steers Claude to the Rider MCP tools. **Default `warn`**: the command runs but a nudge is injected into the model's context (the hard-block guarantee was always porous — the Grep tool / MCP search / Read bypass it). Set `RIDER_ENFORCE=block` for hard denial, `RIDER_ENFORCE=0` to disable. Non-code text (logs, md, json) passes through. |
+| **Enforcement hook** | `hooks/block-code-grep.js` | Intercepts Bash `grep`/`rg`/`find -name` **and the built-in Grep tool** over C/C++/C# source, steering Claude to the Rider MCP tools. **Bash: default `warn`** — the command runs but a nudge is injected into the model's context; `RIDER_ENFORCE=block` hard-denies, `=0` disables. **Grep tool: warn-only, never blocks** — it's the right fallback on a just-edited/unindexed file Rider hasn't reindexed, so it's only nudged (on an explicit code glob/type/path); `=0` silences it. MCP search and the Read tool still bypass by design. Non-code text (logs, md, json) passes through. |
 | **`code-locator` subagent** | `agents/code-locator.md` | Delegate "where is X / what calls Y / find file W" to a context-isolated subagent that uses Rider's index internally and returns only a compact `file:line` table — the raw matches never enter your context. The accuracy + token win without any hook friction. |
 | **Routing skill** | `skills/rider-search/SKILL.md` | Karpathy-style rules: symbol/file/text lookups → Rider tools first; grep is last resort. |
 | **Summarizing proxy** | `proxy/` | An MCP server fronting Rider's MCP. Parses the JSON search responses (`{items:[{filePath,startLine,lineText}],more}`) into compact `path:line  text`, capped at `RIDER_MAX_RESULTS`, and injects a default `projectPath`. Stops large-codebase result floods from blowing up context. |
@@ -292,7 +292,7 @@ Check what's installed with `/plugin` (it lists each plugin's version). If a com
 | `RIDER_EXCLUDE` | `/intermediate/,/binaries/,/build/,/saved/,/deriveddatacache/,/.vs/,/.idea/,/node_modules/,.vcxproj,.sln,.filters` | Comma list of case-insensitive path substrings dropped from results (build artifacts / generated noise). |
 | `RIDER_EXCLUDE_OFF` | `0` | `1`/`true`/`on` keeps the excluded paths in results. |
 | `RIDER_STATS_FILE` | `~/.rider-mcp-enforcer/stats.json` | Where the cumulative token-savings ledger is written. |
-| `RIDER_ENFORCE` | `warn` | `warn` (default) = run the command + inject a nudge; `block` = hard-deny; `0`/`off` = disable the hook entirely. |
+| `RIDER_ENFORCE` | `warn` | `warn` (default) = run the command + inject a nudge; `block` = hard-deny (**Bash only** — the Grep tool is always warn-only, never blocked); `0`/`off` = disable the hook entirely. |
 
 ## How enforcement works
 

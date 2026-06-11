@@ -1,18 +1,38 @@
 #!/usr/bin/env node
 /*
- * rider-mcp-enforcer — PreToolUse hook
- * Blocks Bash code-symbol searches (grep/rg/ack/ag/findstr, or `find -name`, over source
- * files) and tells Claude to use the Rider MCP tools instead. Raw text searches (logs, md,
- * json, config) pass through.
+ * rider-mcp-enforcer — PreToolUse hook (matchers: Bash, Grep)
  *
- * It only triggers when a search tool is the ACTUAL executable of a command segment — so
- * `node setup.mjs ...`, `cd ".../plugins/..."`, etc. are never blocked just because a path
- * or argument happens to contain "rg", "plugins", "source", and the like.
+ * Steers code-symbol search toward Rider's MCP index instead of text search. Two vectors:
+ *   - Bash: grep/rg/ack/ag/findstr (or `find -name`) over C/C++/C# source. warn (default) nudges and
+ *     lets it run; RIDER_ENFORCE=block denies (exit 2). Raw non-code text (logs, md, json) passes.
+ *   - Grep TOOL: the model's reflexive code search lives in the built-in Grep tool, not Bash — so the
+ *     Bash-only hook never fired where the habit is. The Grep branch nudges too, but is **warn-ONLY,
+ *     never block**: Grep is the sanctioned fallback (and the right call on a just-edited/unindexed file
+ *     Rider hasn't reindexed), so blocking it would strand the model. RIDER_ENFORCE=block does NOT
+ *     escalate the Grep branch; =0/off silences it.
+ *
+ * The Bash branch only triggers when a search tool is the ACTUAL executable of a command segment — so
+ * `node setup.mjs ...`, `cd ".../plugins/..."`, etc. are never blocked just because a path or argument
+ * happens to contain "rg", "plugins", "source", and the like.
+ *
+ * Kill-metric (the Grep nudge is an experiment, not a permanent feature): the nudge carries the
+ * distinctive marker "via the Grep tool", so a session transcript can be measured for
+ * nudge-fires vs. subsequent rider-search calls. If that conversion stays ~0, pull the Grep branch —
+ * it's context pollution, not steering. Kept IO-free on purpose (no per-call counter file): token-first.
  *
  * Protocol: exit 0 = allow; exit 2 + stderr = block, stderr shown to the model.
  */
 
 const SEARCH_EXECS = new Set(["grep", "rg", "ack", "ag", "findstr"]);
+
+// ripgrep --type aliases that denote C/C++/C# source (the Grep tool's `type` param forwards to rg).
+// `cs`/`cxx`/`cc` aren't canonical rg type names but are tolerated in case a caller passes them.
+const CODE_TYPES = new Set(["c", "cpp", "csharp", "cs", "cxx", "cc", "cuda"]);
+
+const CODE_EXT_RE = /\.(c|cc|cxx|cpp|h|hpp|hh|inl|ipp|tpp|cs)\b/;
+const CODE_DIR_RE = /(^|[\s"'/\\])(src|source|sources|engine)[\\/]/;
+const TEXT_TARGET_RE =
+  /\.(log|txt|md|markdown|json|ya?ml|csv|tsv|xml|html?|ini|cfg|conf|toml|lock)\b/;
 
 function execOf(segment) {
   const tokens = segment.trim().split(/\s+/);
@@ -31,45 +51,66 @@ function isCodeSearchSegment(segment) {
   const isSearch = SEARCH_EXECS.has(exec) || (exec === "find" && /\s-name(\s|$)/.test(s));
   if (!isSearch) return false;
 
-  const codeExt = /\.(c|cc|cxx|cpp|h|hpp|hh|inl|ipp|tpp|cs)\b/.test(s);
+  const codeExt = CODE_EXT_RE.test(s);
   // NOTE: `plugins` was removed — it over-matched (`.claude/plugins/`, this repo's own plugin dirs),
   // so a `find -name X` whose path merely contained `plugins/` was wrongly flagged as a code search.
-  const codeDir = /(^|[\s"'/\\])(src|source|sources|engine)[\\/]/.test(s);
+  const codeDir = CODE_DIR_RE.test(s);
   const textTarget =
-    /\.(log|txt|md|markdown|json|ya?ml|csv|tsv|xml|html?|ini|cfg|conf|toml|lock)\b/.test(s) ||
+    TEXT_TARGET_RE.test(s) ||
     /(^|[\s"'/\\])(logs?|build|intermediate|saved|node_modules|\.git)[\\/]/.test(s);
 
   return (codeExt || codeDir) && !textTarget;
 }
 
-let input = "";
-process.stdin.on("data", (d) => (input += d));
-process.stdin.on("end", () => {
-  let cmd = "";
-  try {
-    cmd = ((JSON.parse(input).tool_input) || {}).command || "";
-  } catch {
-    process.exit(0); // unparseable — don't block
-  }
-  if (!cmd) process.exit(0);
+// Grep TOOL (built-in). Nudge ONLY on an EXPLICIT code signal — a code-ext glob, a code `type`
+// (rg alias), or a `path` that is a code file / under a code dir. A bare Grep over the cwd (no
+// path/glob/type) is NOT nudged: we can't confirm it targets code, and silence beats noise (a leaky
+// trigger becomes the noise the user disables). An explicit non-code glob/path also opts out.
+function isCodeGrepTool(ti) {
+  if (!ti || typeof ti !== "object") return false;
+  const glob = String(ti.glob || "").toLowerCase();
+  const type = String(ti.type || "").toLowerCase();
+  const p = String(ti.path || "").replace(/\\/g, "/").toLowerCase();
 
-  // Mode: env RIDER_ENFORCE > default "warn". The hard-block guarantee was always porous (the Grep
-  // tool / MCP search / Read tool bypass this hook entirely), so denying-by-default paid friction for a
-  // guarantee that didn't hold. Default now NUDGES (warn) and lets the command run; opt into hard
-  // denial with RIDER_ENFORCE=block (or 1/on/true). RIDER_ENFORCE=0/off disables the nudge too.
+  // explicit non-code target → never nudge
+  if (glob && TEXT_TARGET_RE.test(glob)) return false;
+  if (p && TEXT_TARGET_RE.test(p)) return false;
+
+  const globIsCode = !!glob && CODE_EXT_RE.test(glob);
+  const typeIsCode = CODE_TYPES.has(type);
+  const pathIsCode = (!!p && CODE_EXT_RE.test(p)) || CODE_DIR_RE.test(p);
+  return globIsCode || typeIsCode || pathIsCode;
+}
+
+function parseMode() {
+  // env RIDER_ENFORCE > default "warn". Default NUDGES; opt into hard denial (Bash only) with
+  // RIDER_ENFORCE=block; RIDER_ENFORCE=0/off disables the nudge too.
   const raw = String(process.env.RIDER_ENFORCE ?? "warn").toLowerCase();
-  const mode =
-    ["0", "false", "off", "none", "allow"].includes(raw) ? "off"
-    : ["1", "true", "on", "block", "deny", "hard"].includes(raw) ? "block"
-    : "warn";
-  if (mode === "off") process.exit(0);
+  if (["0", "false", "off", "none", "allow"].includes(raw)) return "off";
+  if (["1", "true", "on", "block", "deny", "hard"].includes(raw)) return "block";
+  return "warn";
+}
 
-  // Evaluate each shell segment independently; only an actual search-tool invocation counts.
-  const segments = cmd.split(/\|\||&&|[|;&\n]/g);
-  const blocked = segments.some((seg) => seg.trim() && isCodeSearchSegment(seg));
-  if (!blocked) process.exit(0);
+function emitWarn(text) {
+  // allow, but inject the nudge into the model's context (stderr on exit 0 isn't reliably surfaced).
+  // Trailing newline for line-buffered stdout readers.
+  process.stdout.write(
+    JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", additionalContext: text } }) + "\n"
+  );
+}
 
-  const nudge =
+// Honest nudge (~50 tok). Does NOT claim Rider is "semantically complete" — this Rider build has no
+// semantic find-references; references are an indexed string match (same blind spots as grep). The real
+// edge is the token-cap + INCOMPLETE banner discipline, and search_symbol being semantic for DEFINITIONS.
+const GREP_NUDGE =
+  "[rider-mcp-enforcer] Code search via the Grep tool on C#/UE-C++. " +
+  "For find-references / dead-code on ESTABLISHED code, prefer rider-search (server: 'rider-search') — " +
+  "it's token-capped and flags INCOMPLETE result sets so you don't act on a partial list; `search_symbol` " +
+  "is semantic for definitions. For a JUST-edited / unindexed file (Rider's index lags fresh saves) or a " +
+  "quick literal peek, Grep is the right call — carry on. Disable: RIDER_ENFORCE=0.";
+
+function bashNudge(mode) {
+  return (
     "[rider-mcp-enforcer] " + (mode === "block" ? "Blocked" : "Heads-up:") + " a code-symbol search via Bash.\n" +
     "Prefer the Rider MCP tools (server: 'rider-search') — token-capped, semantic (Rider's index):\n" +
     "  - symbol / definition         -> search_symbol  (args: q, limit, projectPath)\n" +
@@ -77,14 +118,43 @@ process.stdin.on("end", () => {
     "  - file by name                -> search_file / find_files_by_name_keyword\n" +
     "  - type info at a position     -> get_symbol_info  (filePath, line, column)\n" +
     "Or delegate to the `code-locator` subagent (returns a compact file:line table). If multiple\n" +
-    "projects are open, pass projectPath. Raw non-code text → re-run on a non-code file; disable with RIDER_ENFORCE=0.";
+    "projects are open, pass projectPath. Raw non-code text → re-run on a non-code file; disable with RIDER_ENFORCE=0."
+  );
+}
 
+let input = "";
+process.stdin.on("data", (d) => (input += d));
+process.stdin.on("end", () => {
+  let j;
+  try {
+    j = JSON.parse(input);
+  } catch {
+    process.exit(0); // unparseable — don't block
+  }
+  const toolName = j.tool_name || "";
+  const ti = j.tool_input || {};
+
+  const mode = parseMode();
+  if (mode === "off") process.exit(0);
+
+  // Grep TOOL — warn-only, never block (Grep is the fallback; denying it would strand the model).
+  if (toolName === "Grep") {
+    if (isCodeGrepTool(ti)) emitWarn(GREP_NUDGE);
+    process.exit(0);
+  }
+
+  // Bash — code-grep classifier; honors block mode.
+  const cmd = ti.command || "";
+  if (!cmd) process.exit(0);
+
+  // Evaluate each shell segment independently; only an actual search-tool invocation counts.
+  const segments = cmd.split(/\|\||&&|[|;&\n]/g);
+  const blocked = segments.some((seg) => seg.trim() && isCodeSearchSegment(seg));
+  if (!blocked) process.exit(0);
+
+  const nudge = bashNudge(mode);
   if (mode === "warn") {
-    // allow, but inject the nudge into the model's context (stderr on exit 0 isn't reliably surfaced).
-    // Trailing newline for line-buffered stdout readers.
-    process.stdout.write(
-      JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", additionalContext: nudge } }) + "\n"
-    );
+    emitWarn(nudge);
     process.exit(0);
   }
   process.stderr.write(nudge + "\n");
