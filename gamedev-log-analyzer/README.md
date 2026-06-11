@@ -163,6 +163,13 @@ gamedev-log enforce warn       # back to the default (nudge only)
 GDLOG_ENFORCE=block <cmd>      # per-shell override (env beats config)
 ```
 
+**Transparent rewrite.** When a raw log read is a single, clean command (`grep PATTERN x.log`,
+`cat x.log`, `tail -n 5000 x.log`), the hook doesn't just nudge — it **rewrites** it to the gamedev-log
+equivalent (`grep`→`search`, `cat`/`tail`→`summary`) and lets it run, so the model's flow is unbroken
+**and** the output is guaranteed parsed + token-capped. Anything ambiguous (pipelines, shell vars, quoted
+or multiple paths) falls back to the nudge — a rewrite is never a guess. Opt out with `GDLOG_REWRITE=0`
+(then it nudges, or denies under `enforce block`).
+
 ### Find missed savings — `gamedev-log discover`
 
 ```bash
