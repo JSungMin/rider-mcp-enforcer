@@ -163,6 +163,19 @@ gamedev-log enforce warn       # back to the default (nudge only)
 GDLOG_ENFORCE=block <cmd>      # per-shell override (env beats config)
 ```
 
+### Find missed savings — `gamedev-log discover`
+
+```bash
+gamedev-log discover           # this project: raw log reads that bypassed gamedev-log vs routed through
+gamedev-log discover --since 7 # last 7 days
+gamedev-log discover --all     # all projects (cross-project aggregate)
+```
+
+Scans the local Claude Code transcript and reports, in aggregate, how often logs were read raw instead
+of through `gamedev-log`, plus a coverage ratio. **Local-only**: it reads transcripts, transmits nothing,
+and the output is aggregate counts + coarse, *estimated* token numbers — **never** a command, path, or any
+log content. (Inspired by RTK's `discover`, scoped to logs.)
+
 Mode is read **env `GDLOG_ENFORCE` > `~/.gamedev-log-analyzer/config.json` > default `warn`**. The hook
 fails open — any parse/IO error (missing file, permission denied, a directory, an unstattable path)
 allows the action, so it never wedges your workflow.
