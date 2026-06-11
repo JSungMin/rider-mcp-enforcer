@@ -81,6 +81,22 @@ test("summarize notes hidden build-artifact paths", () => {
   assert.match(text, /build-artifact\/generated path/);
 });
 
+test("summarize: empty result explains the stale-index fallback (not 'symbol missing')", () => {
+  const empty = { content: [{ type: "text", text: JSON.stringify({ items: [], more: false }) }] };
+  const out = summarize(empty, { name: "search_text" }).content[0].text;
+  assert.match(out, /no results/);
+  assert.match(out, /index may lag the save/, "must explain the just-edited-file index lag");
+  assert.match(out, /Grep on THAT file is the correct fallback/, "must bless grep for the fresh-file case");
+  assert.doesNotMatch(out, /symbol search matches DEFINITIONS/, "text tool → no symbol-only hint");
+});
+
+test("summarize: empty SYMBOL search also points at the text tools", () => {
+  const empty = { content: [{ type: "text", text: JSON.stringify({ items: [] }) }] };
+  const out = summarize(empty, { name: "search_symbol" }).content[0].text;
+  assert.match(out, /symbol search matches DEFINITIONS/);
+  assert.match(out, /search_text \/ search_regex/);
+});
+
 test("summarizeLines caps plain text and footnotes the remainder", () => {
   const many = Array.from({ length: 70 }, (_, i) => `row ${i}`).join("\n");
   const out = summarizeLines({ text: many });
