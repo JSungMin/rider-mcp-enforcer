@@ -217,6 +217,19 @@ export function isExcluded(p) {
   return EXCLUDE.some((x) => lp.includes(x));
 }
 
+// A log-ish path: a Logs/ (or Saved/Logs/) dir, or a file ending in .log/.jsonl/.log.N. Used to steer
+// a log-analysis call AWAY from Rider — Rider's code index excludes Saved/ (see EXCLUDE) and isn't a log
+// parser, so a search/read aimed at a log returns empty/"not a directory"/"doesn't exist" here. Route
+// those to gamedev-log instead.
+const LOG_PATHISH = /(^|[/\\])(saved[/\\])?logs[/\\]|\.(log|jsonl)(\.\d+)?$/i;
+export function looksLogTarget(args) {
+  if (!args || typeof args !== "object") return false;
+  const vals = [args.path, args.pathInProject, args.filePath, args.directory, args.dir, args.paths]
+    .flat()
+    .filter((v) => typeof v === "string");
+  return vals.some((v) => LOG_PATHISH.test(v));
+}
+
 function readStats() {
   try {
     return JSON.parse(fs.readFileSync(STATS_FILE, "utf8"));
@@ -324,7 +337,8 @@ export function summarizeSearch(info, { escalated, fetchedLimit, name } = {}) {
         "(no results)\n" +
         "If you JUST created or edited the target file, Rider's index may lag the save — re-running " +
         "with Grep on THAT file is the correct fallback here, not a tool failure. For already-indexed " +
-        "code, an empty result is a real answer." +
+        "code, an empty result is a real answer. Looking for something that lives in LOGS? Saved/Logs is " +
+        "excluded from the code index — use gamedev-log for log analysis, not rider." +
         (isSymbolTool
           ? " Note: symbol search matches DEFINITIONS; if the name may appear only as a reference/usage, " +
             "try search_text / search_regex (indexed string match)."
@@ -532,21 +546,39 @@ async function main() {
     if (PROJECT_PATH && args.projectPath == null) args.projectPath = PROJECT_PATH;
     // Normalize Windows backslashes (see normalizeProjectPath) so Rider's file:// URI is valid.
     args.projectPath = normalizeProjectPath(args.projectPath);
+
+    // A log-analysis call mis-routed to Rider: Rider's code index excludes Saved/ and isn't a log parser,
+    // so it returns empty / "not a directory" / "doesn't exist". Steer it to gamedev-log regardless of
+    // how Rider answered (hits, empty, or error) — append a one-line pointer to the first text part.
+    const logSteer = looksLogTarget(args)
+      ? "\n\n↪ This path looks like a LOG. Rider's code index excludes Saved/ (logs, build output) and " +
+        "isn't a log parser, so log files aren't searchable/readable here. For log analysis use " +
+        "gamedev-log (summary / search / locate / fields / diff) instead of rider."
+      : "";
+    const withSteer = (r) => {
+      if (!logSteer || !r || !Array.isArray(r.content)) return r;
+      const c = r.content.slice();
+      const i = c.findIndex((p) => p && p.type === "text" && typeof p.text === "string");
+      if (i >= 0) c[i] = { ...c[i], text: c[i].text + logSteer };
+      else c.push({ type: "text", text: logSteer.trimStart() });
+      return { ...r, content: c };
+    };
+
     let result;
     try {
       result = await rider.callTool({ name, arguments: args });
     } catch (e) {
-      return {
+      return withSteer({
         isError: true,
         content: [
           { type: "text", text: `Rider MCP call '${name}' failed: ${e.message}` },
         ],
-      };
+      });
     }
     // Decide by response shape: only a list response (and one allowed by the optional restrict
     // filter) is summarized; everything else (file contents, status, …) passes through untouched.
     let info = parseSearch(result);
-    if (!isSummarizable(name, info)) return result;
+    if (!isSummarizable(name, info)) return withSteer(result);
 
     // Auto-escalate once: if the first fetch looks truncated, re-fetch with a larger
     // limit so the true count is known, then summarize with an accurate notice.
@@ -569,7 +601,7 @@ async function main() {
         /* keep the first result if the escalated call fails */
       }
     }
-    return summarize(result, { ...meta, name });
+    return withSteer(summarize(result, { ...meta, name }));
   });
 
   await server.connect(new StdioServerTransport());
