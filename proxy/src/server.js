@@ -519,9 +519,10 @@ async function main() {
       description:
         "Regenerate Unreal project files so Rider re-indexes after source files were added/moved/renamed " +
         "(fixes 'doesn't exist'/empty search results from a stale project model). SAFE BY DEFAULT: the " +
-        "first call is a DRY RUN that resolves the .uproject + engine + exact command and shows them — it " +
-        "runs nothing. Review, then call again with confirm:true to execute. Auto-detect is Windows-only; " +
-        "set RIDER_REGEN_CMD / RIDER_ENGINE_PATH if resolution is wrong.",
+        "call WITHOUT confirm is a DRY RUN that resolves the .uproject + engine + exact command and shows " +
+        "them — it runs nothing. Review, then call again with confirm:true to execute (confirm is required " +
+        "even with RIDER_REGEN_CMD). Auto-detect is Windows-only; set RIDER_REGEN_CMD / RIDER_ENGINE_PATH " +
+        "if resolution is wrong. Prefer no MCP shell-approval prompt? Run the CLI: node <plugin>/proxy/regen.mjs.",
       inputSchema: {
         type: "object",
         properties: {

@@ -144,10 +144,18 @@ MCP connected; `log-analyst` runs on Node alone.
 
 When a search returns "doesn't exist"/empty for a file that *is* on disk, the project files are stale
 (source added/moved/renamed since the last generation) and Rider can't index it. The proxy flags that
-case and points at **`rider_regen_project`**, which regenerates the Unreal project files. It is **safe by
-default**: the first call is a dry run that resolves the `.uproject`, the engine, and the exact command
-and just shows them — you review, then call again with `confirm:true` to run it (auto-detect is
-Windows-only; set `RIDER_REGEN_CMD`/`RIDER_ENGINE_PATH` if resolution is wrong).
+case and points at a regenerate step. It is **dry-run-first**: nothing runs until you confirm.
+
+- **`rider_regen_project` MCP tool** — a call without `confirm` shows the plan (resolved `.uproject`,
+  engine, and exact command); `confirm:true` runs it. Because it spawns a build, Claude Code asks you to
+  approve the tool the first time (expected).
+- **No-approval alternative — the CLI** (`/rider-mcp-enforcer:regen`): run it yourself so there's no MCP
+  shell-approval prompt — `node "<plugin>/proxy/regen.mjs"` (dry run) then `--confirm`. Pin a wrong
+  default with `RIDER_REGEN_CMD`/`RIDER_ENGINE_PATH`. Auto-detect is Windows-only.
+
+**After a successful regen, Rider must reload the solution** (accept its prompt, or **File → Reload All
+from Disk** / Unreal **Refresh**) before the symbol index updates and `search_symbol`/`rename_refactoring`
+resolve the new files — exiting 0 means the generator ran, not that Rider re-indexed.
 >
 > **Two real limitations of this Rider MCP build (verified live):**
 > 1. **No semantic find-usages/find-references tool.** Reference-finding falls back to `search_text`/
