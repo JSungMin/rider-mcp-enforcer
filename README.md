@@ -137,6 +137,9 @@ MCP connected; `log-analyst` runs on Node alone.
 ### Commands & tools
 - `/rider-mcp-enforcer:setup` — configure the plugin (see [Setup](#setup--configuration-command)).
 - `/rider-mcp-enforcer:savings` — show cumulative token savings.
+- `/rider-mcp-enforcer:discover` — scan local Claude Code transcripts for code searches that bypassed
+  rider-search and report the aggregate missed savings + a coverage ratio (local-only; no paths/commands/
+  code in the output). CLI: `node "<plugin>/proxy/discover.mjs"` (run from your project root).
 - MCP tools (server `rider-search`): `rider_setup`, `rider_config`, `rider_detect`, `rider_savings`,
   `rider_savings_reset`, `rider_regen_project`, the summarized Rider search tools (`search_symbol`,
   `search_text`, …), and the Rider refactor tools (`rename_refactoring`, `move_type_to_namespace`,

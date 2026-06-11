@@ -23,64 +23,9 @@
  * Protocol: exit 0 = allow; exit 2 + stderr = block, stderr shown to the model.
  */
 
-const SEARCH_EXECS = new Set(["grep", "rg", "ack", "ag", "findstr"]);
-
-// ripgrep --type aliases that denote C/C++/C# source (the Grep tool's `type` param forwards to rg).
-// `cs`/`cxx`/`cc` aren't canonical rg type names but are tolerated in case a caller passes them.
-const CODE_TYPES = new Set(["c", "cpp", "csharp", "cs", "cxx", "cc", "cuda"]);
-
-const CODE_EXT_RE = /\.(c|cc|cxx|cpp|h|hpp|hh|inl|ipp|tpp|cs)\b/;
-const CODE_DIR_RE = /(^|[\s"'/\\])(src|source|sources|engine)[\\/]/;
-const TEXT_TARGET_RE =
-  /\.(log|txt|md|markdown|json|ya?ml|csv|tsv|xml|html?|ini|cfg|conf|toml|lock)\b/;
-
-function execOf(segment) {
-  const tokens = segment.trim().split(/\s+/);
-  let i = 0;
-  // skip leading env-var assignments: FOO=bar grep ...
-  while (i < tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[i])) i++;
-  let exec = (tokens[i] || "").toLowerCase();
-  // strip any path prefix and a Windows extension → basename
-  exec = exec.replace(/^.*[\\/]/, "").replace(/\.(exe|bat|cmd|ps1)$/, "");
-  return exec;
-}
-
-function isCodeSearchSegment(segment) {
-  const exec = execOf(segment);
-  const s = segment.toLowerCase();
-  const isSearch = SEARCH_EXECS.has(exec) || (exec === "find" && /\s-name(\s|$)/.test(s));
-  if (!isSearch) return false;
-
-  const codeExt = CODE_EXT_RE.test(s);
-  // NOTE: `plugins` was removed — it over-matched (`.claude/plugins/`, this repo's own plugin dirs),
-  // so a `find -name X` whose path merely contained `plugins/` was wrongly flagged as a code search.
-  const codeDir = CODE_DIR_RE.test(s);
-  const textTarget =
-    TEXT_TARGET_RE.test(s) ||
-    /(^|[\s"'/\\])(logs?|build|intermediate|saved|node_modules|\.git)[\\/]/.test(s);
-
-  return (codeExt || codeDir) && !textTarget;
-}
-
-// Grep TOOL (built-in). Nudge ONLY on an EXPLICIT code signal — a code-ext glob, a code `type`
-// (rg alias), or a `path` that is a code file / under a code dir. A bare Grep over the cwd (no
-// path/glob/type) is NOT nudged: we can't confirm it targets code, and silence beats noise (a leaky
-// trigger becomes the noise the user disables). An explicit non-code glob/path also opts out.
-function isCodeGrepTool(ti) {
-  if (!ti || typeof ti !== "object") return false;
-  const glob = String(ti.glob || "").toLowerCase();
-  const type = String(ti.type || "").toLowerCase();
-  const p = String(ti.path || "").replace(/\\/g, "/").toLowerCase();
-
-  // explicit non-code target → never nudge
-  if (glob && TEXT_TARGET_RE.test(glob)) return false;
-  if (p && TEXT_TARGET_RE.test(p)) return false;
-
-  const globIsCode = !!glob && CODE_EXT_RE.test(glob);
-  const typeIsCode = CODE_TYPES.has(type);
-  const pathIsCode = (!!p && CODE_EXT_RE.test(p)) || CODE_DIR_RE.test(p);
-  return globIsCode || typeIsCode || pathIsCode;
-}
+// Pure classifiers live in a side-effect-free module so the `discover` analyzer can share the EXACT
+// same detection without importing this hook's stdin/exit behavior (single source of truth).
+import { isCodeSearchSegment, isCodeGrepTool } from "./detectors.js";
 
 function parseMode() {
   // env RIDER_ENFORCE > default "warn". Default NUDGES; opt into hard denial (Bash only) with
