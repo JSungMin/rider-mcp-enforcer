@@ -32,6 +32,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { regenProject } from "./regen.mjs";
 
 // Settings come from (highest precedence first): environment variable > config file
 // (~/.rider-mcp-enforcer/config.json, written by the setup command) > built-in default.
@@ -71,6 +72,10 @@ const EXCLUDE = String(
   .map((s) => s.trim().toLowerCase())
   .filter(Boolean);
 const STATS_FILE = cfg("RIDER_STATS_FILE", "statsFile", path.join(CONFIG_DIR, "stats.json"));
+// rider_regen_project (project-file regeneration) settings.
+const REGEN_CMD = cfg("RIDER_REGEN_CMD", "regenCmd", ""); // explicit command template; bypasses auto-detect
+const ENGINE_PATH = cfg("RIDER_ENGINE_PATH", "enginePath", ""); // engine dir override for auto-detect
+const REGEN_TIMEOUT = parseInt(cfg("RIDER_REGEN_TIMEOUT", "regenTimeout", "300000"), 10) || 300000;
 // What gets summarized is decided by the RESPONSE SHAPE, not the tool name: a response that parses
 // as Rider's list JSON (`{items:[...]}`) is compacted; anything else (file contents, status, etc.)
 // passes through untouched. This auto-adapts to Rider version/tool changes with zero config and
@@ -99,6 +104,7 @@ const log = (...a) => console.error("[rider-search-proxy]", ...a);
 const CONFIG_KEYS = [
   "riderSseUrl", "projectPath", "maxResults", "escalate", "escalateLimit",
   "maxLineChars", "exclude", "excludeOff", "summarizeTools", "statsFile",
+  "regenCmd", "enginePath", "regenTimeout",
 ];
 function readConfigFile() {
   try {
@@ -228,6 +234,48 @@ export function looksLogTarget(args) {
     .flat()
     .filter((v) => typeof v === "string");
   return vals.some((v) => LOG_PATHISH.test(v));
+}
+
+// Resolve any path-ish arg to an ABSOLUTE path that exists on disk (against the project root for
+// relative pathInProject), or null. Used to tell "Rider's model is stale" apart from "really gone".
+export function resolveExistingPath(args, projectRoot) {
+  if (!args || typeof args !== "object") return null;
+  const cands = [args.filePath, args.pathInProject, args.path, args.directory, args.dir]
+    .concat(Array.isArray(args.paths) ? args.paths : [args.paths])
+    .filter((v) => typeof v === "string" && v.trim());
+  for (const c of cands) {
+    const norm = c.replace(/\\/g, "/");
+    const abs = path.isAbsolute(norm) ? norm : projectRoot ? path.join(projectRoot, norm) : norm;
+    try {
+      if (fs.existsSync(abs)) return abs.replace(/\\/g, "/");
+    } catch {
+      /* unstattable — skip */
+    }
+  }
+  return null;
+}
+
+// Rider reporting a path as missing / not-a-directory / empty-not-found.
+const MISSING_RE = /does(?:n'?t| not)\s*exist|not a directory|no such file|cannot find|couldn'?t find|not found/i;
+export function resultSaysMissing(result) {
+  if (!result || !Array.isArray(result.content)) return false;
+  const txt = result.content.map((p) => (p && typeof p.text === "string" ? p.text : "")).join("\n");
+  return MISSING_RE.test(txt);
+}
+
+// THE strong stale-project signal: Rider says the path is missing, but it EXISTS on disk. That means
+// new/moved/renamed source files since the last GenerateProjectFiles — Rider's project model is stale,
+// not the code. Steer to a re-generate (the rider_regen_project helper, or a manual UBT -projectfiles).
+export function staleProjectNote(result, args, projectRoot) {
+  if (!resultSaysMissing(result)) return "";
+  const onDisk = resolveExistingPath(args, projectRoot);
+  if (!onDisk) return "";
+  return (
+    "\n\n⚠ Stale project files: `" + onDisk + "` EXISTS on disk but Rider's project model doesn't have it " +
+    "— i.e. files were added/moved/renamed since the last project-file generation, so Rider can't index it " +
+    "yet. Re-generate so Rider re-indexes: run the `rider_regen_project` tool (or, manually, " +
+    "GenerateProjectFiles / `Build.bat -projectfiles -project=<.uproject>`). Until then this path stays invisible here."
+  );
 }
 
 function readStats() {
@@ -430,6 +478,9 @@ async function main() {
           excludeOff: { type: "boolean", description: "Keep excluded paths in results" },
           summarizeTools: { type: "string", description: "Comma list of Rider tool names to summarize" },
           statsFile: { type: "string", description: "Path for the savings ledger" },
+          regenCmd: { type: "string", description: "rider_regen_project: explicit command template ({uproject}/{engine} tokens); bypasses auto-detect" },
+          enginePath: { type: "string", description: "rider_regen_project: Unreal engine dir override for auto-detect" },
+          regenTimeout: { type: "number", description: "rider_regen_project: max ms for a regen (default 300000)" },
         },
       },
     },
@@ -462,6 +513,23 @@ async function main() {
       name: "rider_savings_reset",
       description: "Reset the cumulative token-savings ledger to zero.",
       inputSchema: { type: "object", properties: {} },
+    },
+    {
+      name: "rider_regen_project",
+      description:
+        "Regenerate Unreal project files so Rider re-indexes after source files were added/moved/renamed " +
+        "(fixes 'doesn't exist'/empty search results from a stale project model). SAFE BY DEFAULT: the " +
+        "first call is a DRY RUN that resolves the .uproject + engine + exact command and shows them — it " +
+        "runs nothing. Review, then call again with confirm:true to execute. Auto-detect is Windows-only; " +
+        "set RIDER_REGEN_CMD / RIDER_ENGINE_PATH if resolution is wrong.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          projectPath: { type: "string", description: "Project root or .uproject (else RIDER_PROJECT_PATH)" },
+          confirm: { type: "boolean", description: "Actually run the regen (default false = dry run)" },
+          force: { type: "boolean", description: "Run even if a regen lock is present" },
+        },
+      },
     },
   ];
 
@@ -538,6 +606,16 @@ async function main() {
       writeStats({ calls: 0, rawTokens: 0, sentTokens: 0, excludedItems: 0, since: new Date().toISOString() });
       return { content: [{ type: "text", text: "rider-mcp-enforcer savings ledger reset." }] };
     }
+    if (req.params.name === "rider_regen_project") {
+      // Works without Rider connected (it shells out to the engine's generator, not Rider).
+      return regenProject(req.params.arguments || {}, {
+        projectPath: PROJECT_PATH,
+        configDir: CONFIG_DIR,
+        regenCmd: REGEN_CMD,
+        engineOverride: ENGINE_PATH,
+        timeoutMs: REGEN_TIMEOUT,
+      });
+    }
     if (!rider) return SETUP_RESULT;
     const { name } = req.params;
     const args = { ...(req.params.arguments || {}) };
@@ -550,35 +628,38 @@ async function main() {
     // A log-analysis call mis-routed to Rider: Rider's code index excludes Saved/ and isn't a log parser,
     // so it returns empty / "not a directory" / "doesn't exist". Steer it to gamedev-log regardless of
     // how Rider answered (hits, empty, or error) — append a one-line pointer to the first text part.
+    // A log-analysis call mis-routed to Rider (args reference a log path) — steer to gamedev-log.
     const logSteer = looksLogTarget(args)
       ? "\n\n↪ This path looks like a LOG. Rider's code index excludes Saved/ (logs, build output) and " +
         "isn't a log parser, so log files aren't searchable/readable here. For log analysis use " +
         "gamedev-log (summary / search / locate / fields / diff) instead of rider."
       : "";
-    const withSteer = (r) => {
-      if (!logSteer || !r || !Array.isArray(r.content)) return r;
+    // Append the gathered steer note(s) to the first text part of any result (hits / empty / error).
+    const appendNote = (r, note) => {
+      if (!note || !r || !Array.isArray(r.content)) return r;
       const c = r.content.slice();
       const i = c.findIndex((p) => p && p.type === "text" && typeof p.text === "string");
-      if (i >= 0) c[i] = { ...c[i], text: c[i].text + logSteer };
-      else c.push({ type: "text", text: logSteer.trimStart() });
+      if (i >= 0) c[i] = { ...c[i], text: c[i].text + note };
+      else c.push({ type: "text", text: note.trimStart() });
       return { ...r, content: c };
     };
+    // Single exit: whatever the result, append log + stale-project steers (the latter is computed from
+    // the result, so it must run after the call). staleProjectNote fires only on a missing-but-on-disk path.
+    const finish = (r) => appendNote(r, logSteer + staleProjectNote(r, args, PROJECT_PATH));
 
     let result;
     try {
       result = await rider.callTool({ name, arguments: args });
     } catch (e) {
-      return withSteer({
+      return finish({
         isError: true,
-        content: [
-          { type: "text", text: `Rider MCP call '${name}' failed: ${e.message}` },
-        ],
+        content: [{ type: "text", text: `Rider MCP call '${name}' failed: ${e.message}` }],
       });
     }
     // Decide by response shape: only a list response (and one allowed by the optional restrict
     // filter) is summarized; everything else (file contents, status, …) passes through untouched.
     let info = parseSearch(result);
-    if (!isSummarizable(name, info)) return withSteer(result);
+    if (!isSummarizable(name, info)) return finish(result);
 
     // Auto-escalate once: if the first fetch looks truncated, re-fetch with a larger
     // limit so the true count is known, then summarize with an accurate notice.
@@ -601,7 +682,7 @@ async function main() {
         /* keep the first result if the escalated call fails */
       }
     }
-    return withSteer(summarize(result, { ...meta, name }));
+    return finish(summarize(result, { ...meta, name }));
   });
 
   await server.connect(new StdioServerTransport());

@@ -138,8 +138,16 @@ MCP connected; `log-analyst` runs on Node alone.
 - `/rider-mcp-enforcer:setup` — configure the plugin (see [Setup](#setup--configuration-command)).
 - `/rider-mcp-enforcer:savings` — show cumulative token savings.
 - MCP tools (server `rider-search`): `rider_setup`, `rider_config`, `rider_detect`, `rider_savings`,
-  `rider_savings_reset`, the summarized Rider search tools (`search_symbol`, `search_text`, …), and the
-  Rider refactor tools (`rename_refactoring`, `move_type_to_namespace`, `reformat_file`).
+  `rider_savings_reset`, `rider_regen_project`, the summarized Rider search tools (`search_symbol`,
+  `search_text`, …), and the Rider refactor tools (`rename_refactoring`, `move_type_to_namespace`,
+  `reformat_file`).
+
+When a search returns "doesn't exist"/empty for a file that *is* on disk, the project files are stale
+(source added/moved/renamed since the last generation) and Rider can't index it. The proxy flags that
+case and points at **`rider_regen_project`**, which regenerates the Unreal project files. It is **safe by
+default**: the first call is a dry run that resolves the `.uproject`, the engine, and the exact command
+and just shows them — you review, then call again with `confirm:true` to run it (auto-detect is
+Windows-only; set `RIDER_REGEN_CMD`/`RIDER_ENGINE_PATH` if resolution is wrong).
 >
 > **Two real limitations of this Rider MCP build (verified live):**
 > 1. **No semantic find-usages/find-references tool.** Reference-finding falls back to `search_text`/
@@ -300,6 +308,9 @@ Check what's installed with `/plugin` (it lists each plugin's version). If a com
 | `RIDER_EXCLUDE_OFF` | `0` | `1`/`true`/`on` keeps the excluded paths in results. |
 | `RIDER_STATS_FILE` | `~/.rider-mcp-enforcer/stats.json` | Where the cumulative token-savings ledger is written. |
 | `RIDER_ENFORCE` | `warn` | `warn` (default) = run the command + inject a nudge; `block` = hard-deny (**Bash only** — the Grep tool is always warn-only, never blocked); `0`/`off` = disable the hook entirely. |
+| `RIDER_REGEN_CMD` | — | `rider_regen_project`: explicit regen command template (`{uproject}`/`{engine}` tokens), bypassing auto-detect. Set this if auto-detect picks the wrong command (or on macOS/Linux). |
+| `RIDER_ENGINE_PATH` | — | `rider_regen_project`: Unreal engine directory, overriding registry auto-detection. |
+| `RIDER_REGEN_TIMEOUT` | `300000` | `rider_regen_project`: max milliseconds a regen may run before it's killed. |
 
 ## How enforcement works
 
