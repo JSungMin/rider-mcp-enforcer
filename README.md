@@ -95,6 +95,11 @@ actual symbol/source. A typical loop:
 2. Hand that location to rider-mcp-enforcer's `get_symbol_info` / `read_file` (or `search_symbol`) to
    open and understand the code — without ever grepping or dumping the raw log.
 
+The handoff also runs the other way: Rider's code index deliberately excludes `Saved/` (logs, build
+output), so a search/read aimed at a log returns empty or "not a directory" here. When the proxy sees a
+call targeting a log path — or an empty result that might live in the logs — it appends a one-line
+pointer back to gamedev-log, so a log-analysis task doesn't get stuck retrying against the code index.
+
 ## What it does
 
 Rider 2025.2+ ships an MCP server that exposes (verified live) `search_symbol`, `search_file`,

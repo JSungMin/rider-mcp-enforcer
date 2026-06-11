@@ -10,6 +10,7 @@ import {
   itemLine,
   summarize,
   summarizeLines,
+  looksLogTarget,
 } from "../src/server.js";
 
 const BS = String.fromCharCode(92); // backslash, kept out of source literals to avoid escaping traps
@@ -79,6 +80,29 @@ test("summarize notes hidden build-artifact paths", () => {
   ];
   const text = summarize({ content: [{ type: "text", text: JSON.stringify({ items, more: false }) }] }).content[0].text;
   assert.match(text, /build-artifact\/generated path/);
+});
+
+test("looksLogTarget flags log paths/files but not source", () => {
+  // log dirs + files → true
+  assert.equal(looksLogTarget({ path: "G:/Proj/Saved/Logs/Editor.log" }), true);
+  assert.equal(looksLogTarget({ pathInProject: "Saved/Logs/run.jsonl" }), true);
+  assert.equal(looksLogTarget({ path: ["C:\\P\\Saved\\Logs\\x.log"] }), true); // backslashes + array
+  assert.equal(looksLogTarget({ paths: ["a.log", "b.cpp"] }), true); // any element matches
+  assert.equal(looksLogTarget({ filePath: "logs/server.log.3" }), true); // rotated
+  assert.equal(looksLogTarget({ directory: "x/Logs/" }), true);
+  // source / non-log → false
+  assert.equal(looksLogTarget({ path: "Source/Engine/Foo.cpp" }), false);
+  assert.equal(looksLogTarget({ pathInProject: "src/Bar.cs" }), false);
+  assert.equal(looksLogTarget({ path: "Catalog/Item.cs" }), false); // "log" inside "catalog" must NOT match
+  assert.equal(looksLogTarget({}), false);
+  assert.equal(looksLogTarget(null), false);
+});
+
+test("summarize: empty result also steers log lookups to gamedev-log", () => {
+  const empty = { content: [{ type: "text", text: JSON.stringify({ items: [] }) }] };
+  const out = summarize(empty, { name: "search_regex" }).content[0].text;
+  assert.match(out, /lives in LOGS/);
+  assert.match(out, /gamedev-log/);
 });
 
 test("summarize: a non-trivial win gets a per-call savings line", () => {
