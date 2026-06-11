@@ -81,6 +81,22 @@ test("summarize notes hidden build-artifact paths", () => {
   assert.match(text, /build-artifact\/generated path/);
 });
 
+test("summarize: a non-trivial win gets a per-call savings line", () => {
+  const items = Array.from({ length: 60 }, (_, i) => ({
+    filePath: `Source/f${i}.cpp`,
+    startLine: i + 1,
+    lineText: `a matched line of code ${i} with enough text that the raw response is big`,
+  }));
+  const text = summarize({ content: [{ type: "text", text: JSON.stringify({ items, more: false }) }] }).content[0].text;
+  assert.match(text, /✓ Saved ~[\d,]+ tokens here/);
+});
+
+test("summarize: a tiny result gets NO savings footer (no noise)", () => {
+  const items = [{ filePath: "Source/a.cpp", startLine: 1, lineText: "x" }];
+  const text = summarize({ content: [{ type: "text", text: JSON.stringify({ items, more: false }) }] }).content[0].text;
+  assert.doesNotMatch(text, /✓ Saved/);
+});
+
 test("summarize: empty result explains the stale-index fallback (not 'symbol missing')", () => {
   const empty = { content: [{ type: "text", text: JSON.stringify({ items: [], more: false }) }] };
   const out = summarize(empty, { name: "search_text" }).content[0].text;

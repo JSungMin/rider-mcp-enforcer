@@ -4,17 +4,20 @@
  * ------------------
  * An MCP server (stdio, for Claude Code) that is also an MCP client (SSE) to
  * JetBrains Rider's built-in MCP server. It forwards every tool call to Rider,
- * but SUMMARIZES the responses of high-fan-out search tools (find_references,
- * find_symbol, ...) down to `file:line` lines and caps the count, so a
- * find-usages flood on a large Unreal C++ codebase cannot blow up the context.
+ * but SUMMARIZES any high-fan-out search response (this Rider build exposes
+ * search_symbol, search_text, search_regex, search_in_files_by_text/regex, …) down
+ * to `file:line` lines and caps the count, so a find-usages flood on a large Unreal
+ * C++ codebase cannot blow up the context. Summarization is decided by RESPONSE
+ * SHAPE (any Rider `{items:[…]}` list), so it auto-adapts to Rider's tool names with
+ * zero config and never mangles non-list tools like read_file.
  *
  * Config (env):
  *   RIDER_MCP_SSE_URL     Rider MCP SSE URL. Rider -> Settings | Tools | MCP Server
  *                         -> Enable -> "Copy SSE Config". Required.
  *   RIDER_MAX_RESULTS     Max lines kept per summarized response (default 50).
- *   RIDER_SUMMARIZE_TOOLS Comma list of Rider tool names to summarize
- *                         (default: find_references,find_symbol,find_usages,
- *                          list_file_symbols,search_in_files_content).
+ *   RIDER_SUMMARIZE_TOOLS Optional allow-list of Rider tool names to RESTRICT
+ *                         summarization to (back-compat). Unset (default) =
+ *                         summarize any list response.
  */
 
 import {
@@ -356,8 +359,17 @@ export function summarize(result, meta = {}) {
   if (!info) return result; // not a list response → pass through untouched (never trim file contents)
   const { text, excluded } = summarizeSearch(info, meta);
   const rawTok = tok((result.content || []).map((p) => p.text || "").join("\n"));
-  recordSavings(rawTok, tok(text), excluded);
-  return { ...result, content: [{ type: "text", text }] };
+  const sentTok = tok(text);
+  recordSavings(rawTok, sentTok, excluded);
+  // Per-call positive signal (parity with gamedev-log's "✓ Saved" line): show the win only when it's
+  // non-trivial, so a small result doesn't get a noisy footer. Doubles as a "Rider is working" cue —
+  // the absence of this line on a connected search is itself a hint the result was already tiny.
+  const saved = rawTok - sentTok;
+  const withLine =
+    saved >= 500
+      ? `${text}\n\n✓ Saved ~${saved.toLocaleString()} tokens here (Rider index, summarized vs raw response).`
+      : text;
+  return { ...result, content: [{ type: "text", text: withLine }] };
 }
 
 const SETUP_RESULT = {

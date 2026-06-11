@@ -185,7 +185,9 @@ wrong code. So truncation is never silent:
 
 ## How much did it save? (token-savings command)
 
-The proxy records, per summarized call, the tokens it saved vs forwarding Rider's raw response. Check
+Each summarized search also appends a per-call line — `✓ Saved ~N tokens here (Rider index, summarized
+vs raw response)` — whenever the win is non-trivial, so the payoff is visible in the moment (and its
+absence is a hint the result was already small). The proxy records the same numbers cumulatively. Check
 the running total any of these ways:
 
 - **In Claude Code:** run `/rider-mcp-enforcer:savings` (or just ask "how much has the plugin saved?").
