@@ -299,7 +299,7 @@ export function itemLine(it) {
 // exhaustive (more items fetched than shown, OR Rider still reports `more`), emit a LOUD
 // INCOMPLETE banner with explicit options so Claude escalates to the user instead of
 // treating a partial set as the full reference list.
-export function summarizeSearch(info, { escalated, fetchedLimit }) {
+export function summarizeSearch(info, { escalated, fetchedLimit, name } = {}) {
   const kept0 = info.items.filter(
     (it) => !isExcluded(String(it.filePath ?? it.path ?? it.pathInProject ?? "").replace(/\\/g, "/"))
   );
@@ -308,6 +308,27 @@ export function summarizeSearch(info, { escalated, fetchedLimit }) {
   const hidden = kept0.length - shown;
   const incomplete = hidden > 0 || info.more;
   const lines = kept0.slice(0, MAX_RESULTS).map(itemLine);
+  // Empty result: say the honest thing about WHY it might be empty, so a stale-index miss on a
+  // just-saved file doesn't get read as "this symbol doesn't exist" → model losing trust in Rider
+  // and defaulting to grep forever. Rider only searches finished-indexing projects, and its index
+  // lags fresh saves, so on a just-edited file grep IS the right fallback; on established code an
+  // empty result is a real answer. For a symbol tool, also point at the text tools (symbol search
+  // matches definitions, not every reference).
+  if (lines.length === 0) {
+    const isSymbolTool = /symbol/i.test(String(name || ""));
+    return {
+      text:
+        "(no results)\n" +
+        "If you JUST created or edited the target file, Rider's index may lag the save — re-running " +
+        "with Grep on THAT file is the correct fallback here, not a tool failure. For already-indexed " +
+        "code, an empty result is a real answer." +
+        (isSymbolTool
+          ? " Note: symbol search matches DEFINITIONS; if the name may appear only as a reference/usage, " +
+            "try search_text / search_regex (indexed string match)."
+          : ""),
+      excluded,
+    };
+  }
   let text = lines.join("\n");
   if (excluded > 0) {
     text +=
@@ -536,7 +557,7 @@ async function main() {
         /* keep the first result if the escalated call fails */
       }
     }
-    return summarize(result, meta);
+    return summarize(result, { ...meta, name });
   });
 
   await server.connect(new StdioServerTransport());
