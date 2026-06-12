@@ -18,7 +18,25 @@
  * Cap via RIDER_VCS_MAX (default 60). The hook side disables the whole rewrite with RIDER_COMPACT_VCS=0.
  */
 import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { compactGit, compactP4 } from "./src/compact.js";
+
+// Record VCS compaction savings into the SAME cumulative ledger the proxy writes, but under a separate
+// `vcs` bucket so it never pollutes the Rider-search numbers. Best-effort — never throws.
+function recordVcsSavings(rawTok, outTok) {
+  try {
+    const f = process.env.RIDER_STATS_FILE || path.join(os.homedir(), ".rider-mcp-enforcer", "stats.json");
+    let s = {};
+    try { s = JSON.parse(fs.readFileSync(f, "utf8")) || {}; } catch { /* fresh ledger */ }
+    const v = s.vcs || { calls: 0, rawTokens: 0, sentTokens: 0 };
+    v.calls += 1; v.rawTokens += rawTok; v.sentTokens += outTok;
+    s.vcs = v;
+    fs.mkdirSync(path.dirname(f), { recursive: true });
+    fs.writeFileSync(f, JSON.stringify(s, null, 2));
+  } catch { /* best-effort */ }
+}
 
 // Default-deny: only these read-only subcommands run. Anything mutating is refused.
 const GIT_READONLY = new Set(["status", "log", "diff", "show", "blame", "shortlog", "ls-files", "ls-tree", "describe", "rev-parse", "rev-list", "cat-file", "name-rev", "whatchanged", "reflog", "diff-tree", "cherry", "count-objects"]);
@@ -81,6 +99,7 @@ const out = bin === "git" ? compactGit(sub, stdout, MAX) : compactP4(sub, stdout
 
 // Per-call savings cue when the win is non-trivial (chars/4 ≈ tokens; same heuristic as the proxy).
 const rawTok = Math.round(stdout.length / 4), outTok = Math.round(out.length / 4);
+recordVcsSavings(rawTok, outTok); // feed the cumulative ledger so /rider-mcp-enforcer:savings counts VCS too
 const saved = rawTok - outTok;
 const footer = saved >= 200 ? `\n✓ Saved ~${saved} tokens here (${bin} ${sub}, compacted vs raw)` : "";
 

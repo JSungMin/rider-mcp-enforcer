@@ -216,7 +216,8 @@ Unreal **Refresh**)해야 심볼 인덱스가 갱신되고 `search_symbol`/`rena
 
 요약 검색은 이득이 클 때마다 호출 끝에 `✓ Saved ~N tokens here (Rider index, summarized vs raw
 response)` 한 줄을 붙여서, 절감 효과가 그 자리에서 바로 보이게 합니다(이 줄이 안 보이면 결과가 원래
-작았다는 신호). 프록시는 같은 수치를 누적으로도 기록합니다. 누적 합계 확인 방법:
+작았다는 신호). 프록시는 같은 수치를 누적으로도 기록하고, [VCS 출력 압축](#vcs-출력-압축-git--p4)도 같은
+ledger의 `git/p4` 전용 섹션에 쌓입니다(Rider 검색 수치를 흐리지 않게 분리 보관). 누적 합계 확인 방법:
 
 - **Claude Code에서:** `/rider-mcp-enforcer:savings` 실행 (또는 "플러그인이 얼마나 아꼈어?" 라고 질문).
   `rider_savings` MCP 도구를 호출합니다.

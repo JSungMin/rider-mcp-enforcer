@@ -279,11 +279,11 @@ export function staleProjectNote(result, args, projectRoot) {
 }
 
 function readStats() {
-  try {
-    return JSON.parse(fs.readFileSync(STATS_FILE, "utf8"));
-  } catch {
-    return { calls: 0, rawTokens: 0, sentTokens: 0, excludedItems: 0, since: null };
-  }
+  let s;
+  try { s = JSON.parse(fs.readFileSync(STATS_FILE, "utf8")) || {}; } catch { s = {}; }
+  // Always present so a ledger that holds ONLY a `vcs` bucket (VCS recorded before any Rider search) can't
+  // crash the report on a missing top-level field.
+  return { calls: 0, rawTokens: 0, sentTokens: 0, excludedItems: 0, since: null, ...s };
 }
 function writeStats(s) {
   try {
@@ -302,6 +302,19 @@ function recordSavings(rawTok, sentTok, excludedItems) {
   s.excludedItems += excludedItems || 0;
   writeStats(s);
 }
+function vcsSavingsLines(s) {
+  const v = s.vcs;
+  if (!v || !v.calls) return "";
+  const saved = (v.rawTokens || 0) - (v.sentTokens || 0);
+  const pct = v.rawTokens ? Math.round((saved / v.rawTokens) * 100) : 0;
+  return (
+    `\n  ── VCS output compaction (git/p4) ──\n` +
+    `  compacted calls  : ${v.calls}\n` +
+    `  raw tokens       : ~${(v.rawTokens || 0).toLocaleString()}\n` +
+    `  sent tokens      : ~${(v.sentTokens || 0).toLocaleString()}\n` +
+    `  saved            : ~${saved.toLocaleString()} (${pct}%)`
+  );
+}
 function savingsReport() {
   const s = readStats();
   const saved = s.rawTokens - s.sentTokens;
@@ -313,8 +326,9 @@ function savingsReport() {
     `  sent tokens      : ~${s.sentTokens.toLocaleString()}\n` +
     `  saved            : ~${saved.toLocaleString()} (${pct}%)\n` +
     `  noise items dropped (build artifacts): ${s.excludedItems}\n` +
-    `  since            : ${s.since || "—"}\n` +
-    `  ledger           : ${STATS_FILE}`
+    `  since            : ${s.since || "—"}` +
+    vcsSavingsLines(s) +
+    `\n  ledger           : ${STATS_FILE}`
   );
 }
 

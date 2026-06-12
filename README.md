@@ -215,8 +215,10 @@ wrong code. So truncation is never silent:
 
 Each summarized search also appends a per-call line — `✓ Saved ~N tokens here (Rider index, summarized
 vs raw response)` — whenever the win is non-trivial, so the payoff is visible in the moment (and its
-absence is a hint the result was already small). The proxy records the same numbers cumulatively. Check
-the running total any of these ways:
+absence is a hint the result was already small). The proxy records the same numbers cumulatively, and
+[VCS output compaction](#vcs-output-compaction-git--p4) feeds the same ledger under its own `git/p4`
+section (kept separate so it never skews the Rider-search numbers). Check the running total any of these
+ways:
 
 - **In Claude Code:** run `/rider-mcp-enforcer:savings` (or just ask "how much has the plugin saved?").
   It calls the `rider_savings` MCP tool.
