@@ -13,7 +13,9 @@ function runHook(payload, extraEnv = {}) {
   const r = spawnSync(process.execPath, [HOOK], {
     input: JSON.stringify(payload),
     encoding: "utf8",
-    env: { ...process.env, ...extraEnv },
+    // Default the UI language to English so the suite is locale-independent (a ko-KR dev machine would
+    // otherwise get Korean nudges and fail the English-text assertions). Localization tests override this.
+    env: { ...process.env, RIDER_LANG: "en", ...extraEnv },
   });
   return { stdout: r.stdout || "", stderr: r.stderr || "", code: r.status };
 }
@@ -190,4 +192,27 @@ test("Bash: a preview `p4 reconcile -n` IS rewritten (read-only)", () => {
 test("Bash: a MUTATING `p4 reconcile` (no -n) is NOT rewritten (keeps write semantics)", () => {
   const r = runHook({ tool_name: "Bash", tool_input: { command: "p4 reconcile" } });
   assert.equal(r.stdout.trim(), "", "must not silently turn a mutation into a preview");
+});
+
+// --- localization: RIDER_LANG > config lang > OS locale > en ---
+test("Grep: RIDER_LANG=ko → Korean nudge", () => {
+  const r = grep({ pattern: "Foo", glob: "*.cs" }, { RIDER_LANG: "ko" });
+  assert.match(r.stdout, /Grep 툴|코드 검색/);
+});
+
+test("Grep: RIDER_LANG=en → English nudge", () => {
+  const r = grep({ pattern: "Foo", glob: "*.cs" }, { RIDER_LANG: "en" });
+  assert.match(r.stdout, /Grep tool/);
+});
+
+test("Bash block: RIDER_LANG=ko → reassuring Korean (not a scary error), still exit 2", () => {
+  const r = runHook({ tool_name: "Bash", tool_input: { command: "grep -rn Foo src/" } }, { RIDER_ENFORCE: "block", RIDER_LANG: "ko" });
+  assert.equal(r.code, 2);
+  assert.match(r.stderr, /가로챘어요|아꼈습니다/);
+});
+
+test("Bash block: RIDER_LANG=en → reassuring English header, exit 2", () => {
+  const r = runHook({ tool_name: "Bash", tool_input: { command: "grep -rn Foo src/" } }, { RIDER_ENFORCE: "block", RIDER_LANG: "en" });
+  assert.equal(r.code, 2);
+  assert.match(r.stderr, /caught a Bash code search|nothing broke/);
 });

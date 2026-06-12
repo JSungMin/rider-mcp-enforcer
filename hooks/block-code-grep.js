@@ -36,8 +36,19 @@ import { fileURLToPath } from "node:url";
 const CONFIG_FILE = process.env.RIDER_CONFIG_FILE || path.join(os.homedir(), ".rider-mcp-enforcer", "config.json");
 const readConfig = () => { try { return JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8")) || {}; } catch { return {}; } };
 const notSetUp = () => { try { return !fs.existsSync(CONFIG_FILE); } catch { return false; } };
-const SETUP_LINE =
-  "\nNot set up yet? Run /rider-mcp-enforcer:setup (or `node <plugin>/proxy/setup.mjs --detect`) to set the Rider SSE URL + project root.";
+
+// UI language for the human-facing nudges/blocks: RIDER_LANG > config `lang` > OS locale (Intl) > "en".
+// A Korean user (ko-KR locale) gets Korean automatically; force with RIDER_LANG=ko|en.
+function uiLang() {
+  const v = String(process.env.RIDER_LANG || readConfig().lang || "").toLowerCase();
+  if (v) return v.startsWith("ko") ? "ko" : "en";
+  try { return /^ko/i.test(Intl.DateTimeFormat().resolvedOptions().locale) ? "ko" : "en"; } catch { return "en"; }
+}
+const KO = uiLang() === "ko";
+
+const SETUP_LINE = KO
+  ? "\n아직 설정 안 했나요? /rider-mcp-enforcer:setup (또는 `node <plugin>/proxy/setup.mjs --detect`)로 Rider SSE URL + 프로젝트 루트를 설정하세요."
+  : "\nNot set up yet? Run /rider-mcp-enforcer:setup (or `node <plugin>/proxy/setup.mjs --detect`) to set the Rider SSE URL + project root.";
 
 // excludeCommands — finer than the global RIDER_ENFORCE=0 kill switch: a code search whose executable is
 // in this list is left alone (no nudge, no block). Sources: config.json `excludeCommands` (array) +
@@ -107,24 +118,46 @@ function emitWarn(text) {
 // Honest nudge (~50 tok). Does NOT claim Rider is "semantically complete" — this Rider build has no
 // semantic find-references; references are an indexed string match (same blind spots as grep). The real
 // edge is the token-cap + INCOMPLETE banner discipline, and search_symbol being semantic for DEFINITIONS.
-const GREP_NUDGE =
-  "[rider-mcp-enforcer] Code search via the Grep tool on C#/UE-C++. " +
-  "For find-references / dead-code on ESTABLISHED code, prefer rider-search (server: 'rider-search') — " +
-  "it's token-capped and flags INCOMPLETE result sets so you don't act on a partial list; `search_symbol` " +
-  "is semantic for definitions. For a JUST-edited / unindexed file (Rider's index lags fresh saves) or a " +
-  "quick literal peek, Grep is the right call — carry on. Disable: RIDER_ENFORCE=0.";
+const GREP_NUDGE = KO
+  ? "[rider-mcp-enforcer] Grep 툴로 C#/UE-C++ 코드 검색 중이에요. 이미 자리잡은 코드의 참조 찾기·데드코드는 " +
+    "rider-search(server: 'rider-search')를 권장합니다 — 토큰캡되고, 결과가 잘리면 INCOMPLETE 배너로 알려줘서 " +
+    "부분 목록으로 잘못 판단하지 않게 해줘요. `search_symbol`은 정의(definition)에 한해 시맨틱입니다. 방금 수정했거나 " +
+    "미인덱스 파일(Rider 인덱스는 막 저장한 변경을 늦게 반영), 또는 빠른 텍스트 확인이면 Grep 그대로가 맞아요 — 진행하세요. 끄기: RIDER_ENFORCE=0."
+  : "[rider-mcp-enforcer] Code search via the Grep tool on C#/UE-C++. " +
+    "For find-references / dead-code on ESTABLISHED code, prefer rider-search (server: 'rider-search') — " +
+    "it's token-capped and flags INCOMPLETE result sets so you don't act on a partial list; `search_symbol` " +
+    "is semantic for definitions. For a JUST-edited / unindexed file (Rider's index lags fresh saves) or a " +
+    "quick literal peek, Grep is the right call — carry on. Disable: RIDER_ENFORCE=0.";
 
 function bashNudge(mode) {
-  return (
-    "[rider-mcp-enforcer] " + (mode === "block" ? "Blocked" : "Heads-up:") + " a code-symbol search via Bash.\n" +
-    "Prefer the Rider MCP tools (server: 'rider-search') — token-capped, semantic (Rider's index):\n" +
+  const blocked = mode === "block";
+  if (KO) {
+    const head = blocked
+      ? "✨ rider-mcp-enforcer가 Bash 코드 검색을 가로챘어요 — 고장난 게 아니라 의도된 동작이고, 토큰을 아꼈습니다. 🎉\n" +
+        "(빨간 박스는 훅이 \"잠깐\"이라고 말하는 방식일 뿐, 실패가 아니라 친절한 안내예요.)\n"
+      : "[rider-mcp-enforcer] Bash 코드-심볼 검색 감지.\n";
+    return head +
+      "같은 검색을 Rider 인덱스로 하면 file:line으로 토큰캡되고, grep의 거짓 양성(주석·include·유사명)도 없어요:\n" +
+      "  - 심볼 / 정의            -> search_symbol  (q, limit, projectPath)\n" +
+      "  - 텍스트 / 코드 내 참조  -> search_text 또는 search_regex  (q, paths, limit)\n" +
+      "  - 파일명                 -> search_file / find_files_by_name_keyword\n" +
+      "  - 위치의 타입 정보       -> get_symbol_info  (filePath, line, column)\n" +
+      "또는 `code-locator` 서브에이전트에 위임하세요(간결한 file:line 테이블 반환). 여러 프로젝트가 열려 있으면 projectPath 전달.\n" +
+      "비코드 텍스트는 비코드 파일에서 다시 실행. 끄기: RIDER_ENFORCE=0.";
+  }
+  const head = blocked
+    ? "✨ rider-mcp-enforcer caught a Bash code search before it flooded your context — nothing broke, this is\n" +
+      "intended, and it saved tokens. 🎉 (The red box is just how a hook says \"hold on\" — guidance, not a failure.)\n"
+    : "[rider-mcp-enforcer] Heads-up: a code-symbol search via Bash.\n";
+  return head +
+    "The same search through Rider's index is token-capped to file:line, without grep's false positives\n" +
+    "(comments / includes / look-alikes):\n" +
     "  - symbol / definition         -> search_symbol  (args: q, limit, projectPath)\n" +
     "  - text / references in code   -> search_text or search_regex  (q, paths, limit)\n" +
     "  - file by name                -> search_file / find_files_by_name_keyword\n" +
     "  - type info at a position     -> get_symbol_info  (filePath, line, column)\n" +
     "Or delegate to the `code-locator` subagent (returns a compact file:line table). If multiple\n" +
-    "projects are open, pass projectPath. Raw non-code text → re-run on a non-code file; disable with RIDER_ENFORCE=0."
-  );
+    "projects are open, pass projectPath. Raw non-code text → re-run on a non-code file; disable with RIDER_ENFORCE=0.";
 }
 
 let input = "";
@@ -181,9 +214,10 @@ process.stdin.on("end", () => {
           permissionDecision: "allow",
           permissionDecisionReason: `Rerouted ${v.bin} ${v.sub} → compacting wrapper (grouped/deduped/token-capped).`,
           updatedInput: { ...ti, command: v.cmd },
-          additionalContext:
-            `[rider-mcp-enforcer] Compacting \`${v.bin} ${v.sub}\` output (grouped/deduped/capped). ` +
-            `The real command still runs. Disable: RIDER_COMPACT_VCS=0.`,
+          additionalContext: KO
+            ? `[rider-mcp-enforcer] \`${v.bin} ${v.sub}\` 출력을 압축합니다(묶음/중복제거/상한). 실제 명령은 그대로 실행돼요. 끄기: RIDER_COMPACT_VCS=0.`
+            : `[rider-mcp-enforcer] Compacting \`${v.bin} ${v.sub}\` output (grouped/deduped/capped). ` +
+              `The real command still runs. Disable: RIDER_COMPACT_VCS=0.`,
         },
       }) + "\n");
       process.exit(0);
