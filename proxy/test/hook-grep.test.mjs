@@ -92,3 +92,92 @@ test("Bash: non-code grep (a log) passes through untouched", () => {
   assert.equal(r.code, 0);
   assert.equal(r.stdout.trim(), "");
 });
+
+// --- git grep: a code search on its own (scans tracked source by default) ---
+test("Bash: `git grep Foo` nudges (tracked-code search, no explicit path needed)", () => {
+  const r = runHook({ tool_name: "Bash", tool_input: { command: "git grep Foo" } });
+  assert.match(r.stdout, /rider-mcp-enforcer/);
+});
+
+test("Bash: `git grep x -- '*.log'` passes (explicit text/log target)", () => {
+  const r = runHook({ tool_name: "Bash", tool_input: { command: "git grep warning Saved/Logs/Editor.log" } });
+  assert.equal(r.stdout.trim(), "");
+});
+
+test("Bash: plain `git status` is NOT a code search (no code nudge, never blocks)", () => {
+  const r = runHook({ tool_name: "Bash", tool_input: { command: "git status" } });
+  assert.notEqual(r.code, 2, "git status must never be blocked as a code search");
+  assert.doesNotMatch(r.stdout, /code-symbol search/, "not the code nudge (it's a VCS command)");
+});
+
+// --- excludeCommands: per-exec opt-out (finer than RIDER_ENFORCE=0) ---
+test("Bash: RIDER_EXCLUDE_COMMANDS=grep leaves a grep code search alone", () => {
+  const r = runHook(
+    { tool_name: "Bash", tool_input: { command: "grep -n Foo src/Foo.cpp" } },
+    { RIDER_EXCLUDE_COMMANDS: "grep" }
+  );
+  assert.equal(r.stdout.trim(), "");
+});
+
+test("Bash: RIDER_EXCLUDE_COMMANDS=rg does NOT exclude grep (still nudges)", () => {
+  const r = runHook(
+    { tool_name: "Bash", tool_input: { command: "grep -n Foo src/Foo.cpp" } },
+    { RIDER_EXCLUDE_COMMANDS: "rg" }
+  );
+  assert.match(r.stdout, /rider-mcp-enforcer/);
+});
+
+// --- VCS output compaction: rewrite a read-only git/p4 command to the compacting wrapper (never blocks) ---
+function vcsOut(stdout) {
+  // The hook emits a JSON object on stdout for a rewrite; parse the last JSON line.
+  const line = stdout.trim().split("\n").filter((l) => l.trim().startsWith("{")).pop();
+  return line ? JSON.parse(line) : null;
+}
+
+test("Bash: `git status` → rewrite to the vcs wrapper (allow + updatedInput), exit 0", () => {
+  const r = runHook({ tool_name: "Bash", tool_input: { command: "git status --porcelain" } });
+  assert.equal(r.code, 0);
+  const j = vcsOut(r.stdout);
+  assert.equal(j.hookSpecificOutput.permissionDecision, "allow");
+  assert.match(j.hookSpecificOutput.updatedInput.command, /vcs\.mjs" git "status" "--porcelain"/);
+});
+
+test("Bash: `git log --oneline -5` → rewrite", () => {
+  const j = vcsOut(runHook({ tool_name: "Bash", tool_input: { command: "git log --oneline -5" } }).stdout);
+  assert.match(j.hookSpecificOutput.updatedInput.command, /vcs\.mjs" git "log"/);
+});
+
+test("Bash: `p4 opened` → rewrite", () => {
+  const j = vcsOut(runHook({ tool_name: "Bash", tool_input: { command: "p4 opened" } }).stdout);
+  assert.match(j.hookSpecificOutput.updatedInput.command, /vcs\.mjs" p4 "opened"/);
+});
+
+test("Bash: `git commit -m x` is NOT compacted (not a read-only sub)", () => {
+  // a quote would also bail, so use a metachar-free non-readonly command
+  const r = runHook({ tool_name: "Bash", tool_input: { command: "git commit --amend" } });
+  assert.equal(r.stdout.trim(), "");
+});
+
+test("Bash: `git status | grep x` is NOT rewritten (pipeline = not a single segment)", () => {
+  const r = runHook({ tool_name: "Bash", tool_input: { command: "git status | grep x" } });
+  assert.equal(r.stdout.trim(), "");
+});
+
+test("Bash: a quoted git command bails (no rewrite)", () => {
+  const r = runHook({ tool_name: "Bash", tool_input: { command: "git log --grep='fix bug'" } });
+  assert.equal(r.stdout.trim(), "");
+});
+
+test("Bash: RIDER_COMPACT_VCS=0 disables the rewrite", () => {
+  const r = runHook(
+    { tool_name: "Bash", tool_input: { command: "git status" } },
+    { RIDER_COMPACT_VCS: "0" }
+  );
+  assert.equal(r.stdout.trim(), "");
+});
+
+test("Bash: `git grep Foo` stays a CODE nudge, not VCS compaction", () => {
+  const r = runHook({ tool_name: "Bash", tool_input: { command: "git grep Foo" } });
+  assert.match(r.stdout, /rider-mcp-enforcer/);
+  assert.doesNotMatch(r.stdout, /updatedInput/, "git grep is a code search, never a VCS rewrite");
+});
