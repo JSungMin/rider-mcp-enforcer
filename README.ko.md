@@ -347,6 +347,7 @@ Claude Code는 마켓플레이스 repo를 캐시하므로 새 커밋이 **자동
 | `RIDER_EXCLUDE_COMMANDS` | — | 훅이 건드리지 않을 실행기(`grep`/`rg`/`ack`/`ag`/`findstr`/`find`/`git`) 콤마 목록 — 전역 `RIDER_ENFORCE=0`보다 세밀함. config.json의 `excludeCommands`(배열)로도 설정 가능. |
 | `RIDER_COMPACT_VCS` | `1` | `0`/`off`이면 읽기 전용 `git`/`p4` 출력 압축 rewrite 비활성화 ([VCS 출력 압축](#vcs-출력-압축-git--p4) 참고). |
 | `RIDER_VCS_MAX` | `60` | 압축된 `git`/`p4` 결과에서 유지할 최대 묶음 줄 수. |
+| `RIDER_LANG` | _(OS 로케일)_ | 사람이 읽는 nudge/차단 메시지 언어 — `ko` 또는 `en`. OS 로케일에서 자동 감지(한국어 로케일이면 한국어). 여기서 또는 config.json의 `lang`으로 덮어쓰기. |
 | `RIDER_REGEN_CMD` | — | `rider_regen_project`: 자동 탐지를 건너뛰는 명시적 재생성 명령 템플릿(`{uproject}`/`{engine}` 토큰). 자동 탐지가 엉뚱한 명령을 고르거나 macOS/Linux일 때 설정. |
 | `RIDER_ENGINE_PATH` | — | `rider_regen_project`: Unreal 엔진 디렉터리. 레지스트리 자동 탐지를 덮어씀. |
 | `RIDER_REGEN_TIMEOUT` | `300000` | `rider_regen_project`: 재생성이 강제 종료되기까지의 최대 밀리초. |

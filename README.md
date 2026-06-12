@@ -346,6 +346,7 @@ Check what's installed with `/plugin` (it lists each plugin's version). If a com
 | `RIDER_EXCLUDE_COMMANDS` | — | Comma list of executables (`grep`/`rg`/`ack`/`ag`/`findstr`/`find`/`git`) the hook leaves alone — finer than the global `RIDER_ENFORCE=0`. Also settable as `excludeCommands` (array) in config.json. |
 | `RIDER_COMPACT_VCS` | `1` | `0`/`off` disables the read-only `git`/`p4` output-compaction rewrite (see [VCS output compaction](#vcs-output-compaction-git--p4)). |
 | `RIDER_VCS_MAX` | `60` | Max grouped lines kept in a compacted `git`/`p4` result. |
+| `RIDER_LANG` | _(OS locale)_ | Language for the human-facing nudges/blocks — `ko` or `en`. Auto-detected from your OS locale (a Korean locale gets Korean automatically); override here or via `lang` in config.json. |
 | `RIDER_REGEN_CMD` | — | `rider_regen_project`: explicit regen command template (`{uproject}`/`{engine}` tokens), bypassing auto-detect. Set this if auto-detect picks the wrong command (or on macOS/Linux). |
 | `RIDER_ENGINE_PATH` | — | `rider_regen_project`: Unreal engine directory, overriding registry auto-detection. |
 | `RIDER_REGEN_TIMEOUT` | `300000` | `rider_regen_project`: max milliseconds a regen may run before it's killed. |
