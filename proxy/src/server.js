@@ -104,7 +104,7 @@ const log = (...a) => console.error("[rider-search-proxy]", ...a);
 const CONFIG_KEYS = [
   "riderSseUrl", "projectPath", "maxResults", "escalate", "escalateLimit",
   "maxLineChars", "exclude", "excludeOff", "summarizeTools", "statsFile",
-  "regenCmd", "enginePath", "regenTimeout",
+  "regenCmd", "enginePath", "regenTimeout", "excludeCommands",
 ];
 function readConfigFile() {
   try {

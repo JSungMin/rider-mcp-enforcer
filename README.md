@@ -109,7 +109,7 @@ actually use them instead of grep:
 
 | Layer | File | Effect |
 | --- | --- | --- |
-| **Enforcement hook** | `hooks/block-code-grep.js` | Intercepts Bash `grep`/`rg`/`find -name` **and the built-in Grep tool** over C/C++/C# source, steering Claude to the Rider MCP tools. **Bash: default `warn`** — the command runs but a nudge is injected into the model's context; `RIDER_ENFORCE=block` hard-denies, `=0` disables. **Grep tool: warn-only, never blocks** — it's the right fallback on a just-edited/unindexed file Rider hasn't reindexed, so it's only nudged (on an explicit code glob/type/path); `=0` silences it. MCP search and the Read tool still bypass by design. Non-code text (logs, md, json) passes through. |
+| **Enforcement hook** | `hooks/block-code-grep.js` | Intercepts Bash `grep`/`rg`/`find -name`/`git grep` **and the built-in Grep tool** over C/C++/C# source, steering Claude to the Rider MCP tools. **Bash: default `warn`** — the command runs but a nudge is injected into the model's context; `RIDER_ENFORCE=block` hard-denies, `=0` disables. **Grep tool: warn-only, never blocks** — it's the right fallback on a just-edited/unindexed file Rider hasn't reindexed, so it's only nudged (on an explicit code glob/type/path); `=0` silences it. MCP search and the Read tool still bypass by design. Non-code text (logs, md, json) passes through. |
 | **`code-locator` subagent** | `agents/code-locator.md` | Delegate "where is X / what calls Y / find file W" to a context-isolated subagent that uses Rider's index internally and returns only a compact `file:line` table — the raw matches never enter your context. The accuracy + token win without any hook friction. |
 | **Routing skill** | `skills/rider-search/SKILL.md` | Karpathy-style rules: symbol/file/text lookups → Rider tools first; grep is last resort. |
 | **Summarizing proxy** | `proxy/` | An MCP server fronting Rider's MCP. Parses the JSON search responses (`{items:[{filePath,startLine,lineText}],more}`) into compact `path:line  text`, capped at `RIDER_MAX_RESULTS`, and injects a default `projectPath`. Stops large-codebase result floods from blowing up context. |
@@ -235,6 +235,24 @@ rider-mcp-enforcer — cumulative token savings (vs forwarding Rider's raw respo
 > "Saved" here is vs Rider's *raw* response. Savings vs **Bash grep** are typically far larger — see
 > [BENCHMARK.md](BENCHMARK.md).
 
+## VCS output compaction (git / p4)
+
+A read-only `git status` / `git log` / `git diff` (or `p4 opened` / `status` / `changes` / `reconcile`)
+can dump hundreds of repetitive, mostly-boilerplate lines into the context. The hook transparently reroutes
+a single such command to a compacting wrapper (`proxy/vcs.mjs`) that **runs the real command** and then
+groups, deduplicates, and caps the output — `git status` → counts per change-type + top dirs, `git log` →
+one line per commit, `git diff` → a per-file `+adds/-dels` diffstat (hunks dropped).
+
+This is the *safe* rewrite class. Unlike code search — which targets Rider's MCP and so can't be a
+Bash→Bash rewrite — `git`/`p4` are local CLIs that always work, so the rewrite can never strand you: the
+command still runs, you just get the compacted output. It never blocks. A non-zero exit or empty output passes the real command's stdout/stderr through untouched, so a
+"not a git repo" / auth error surfaces verbatim.
+
+Anything ambiguous — a pipeline, shell quoting, a `$`/redirect, a global flag before the subcommand
+(`git -C path status`), or a non-read-only subcommand (`git commit`) — is left exactly as you typed it; a
+rewrite is never a guess. `git grep` stays a **code** search (routed to the Rider tools, not compacted).
+Disable with `RIDER_COMPACT_VCS=0`; cap with `RIDER_VCS_MAX` (default 60).
+
 ## Prerequisites
 
 - **JetBrains Rider 2025.2+**, running, with the project open.
@@ -323,6 +341,9 @@ Check what's installed with `/plugin` (it lists each plugin's version). If a com
 | `RIDER_EXCLUDE_OFF` | `0` | `1`/`true`/`on` keeps the excluded paths in results. |
 | `RIDER_STATS_FILE` | `~/.rider-mcp-enforcer/stats.json` | Where the cumulative token-savings ledger is written. |
 | `RIDER_ENFORCE` | `warn` | `warn` (default) = run the command + inject a nudge; `block` = hard-deny (**Bash only** — the Grep tool is always warn-only, never blocked); `0`/`off` = disable the hook entirely. |
+| `RIDER_EXCLUDE_COMMANDS` | — | Comma list of executables (`grep`/`rg`/`ack`/`ag`/`findstr`/`find`/`git`) the hook leaves alone — finer than the global `RIDER_ENFORCE=0`. Also settable as `excludeCommands` (array) in config.json. |
+| `RIDER_COMPACT_VCS` | `1` | `0`/`off` disables the read-only `git`/`p4` output-compaction rewrite (see [VCS output compaction](#vcs-output-compaction-git--p4)). |
+| `RIDER_VCS_MAX` | `60` | Max grouped lines kept in a compacted `git`/`p4` result. |
 | `RIDER_REGEN_CMD` | — | `rider_regen_project`: explicit regen command template (`{uproject}`/`{engine}` tokens), bypassing auto-detect. Set this if auto-detect picks the wrong command (or on macOS/Linux). |
 | `RIDER_ENGINE_PATH` | — | `rider_regen_project`: Unreal engine directory, overriding registry auto-detection. |
 | `RIDER_REGEN_TIMEOUT` | `300000` | `rider_regen_project`: max milliseconds a regen may run before it's killed. |
@@ -330,9 +351,11 @@ Check what's installed with `/plugin` (it lists each plugin's version). If a com
 ## How enforcement works
 
 - The **hook** runs before every Bash call. If the command is a code-symbol search (grep/rg/ack/ag/
-  findstr or `find -name` targeting `*.cpp/.h/.cs/...` or `src|source|engine|plugins/`) and is *not*
-  aimed at a log/md/json/build path, it exits non-zero and Claude sees a message telling it to use
-  the Rider tool. Otherwise it allows the command.
+  findstr, `find -name`, or `git grep` — which scans the tracked source tree by default) targeting
+  `*.cpp/.h/.cs/...` or `src|source|engine/`, and is *not* aimed at a log/md/json/build path, it nudges
+  (or, under `RIDER_ENFORCE=block`, exits non-zero) toward the Rider tool. Otherwise it allows the
+  command. The first time you trigger it before configuring the plugin, the nudge also points at
+  `/rider-mcp-enforcer:setup`.
 - The **skill** biases Claude toward the Rider tools proactively.
 - The **proxy** guarantees the token cap regardless of how Claude calls the tool.
 

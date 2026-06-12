@@ -25,18 +25,27 @@ export function execOf(segment) {
   return exec;
 }
 
-// A single Bash command segment that is a code-symbol search (grep/rg/ack/ag/findstr/`find -name`
-// over C/C++/C# source), not aimed at a log/build/text path.
+// `git grep` scans the tracked source tree by DEFAULT (no path/ext needed), so it's a code search on
+// its own — unlike a bare `grep` over the cwd. Caught even without an explicit code path/ext.
+export function isGitGrepSegment(segment) {
+  return execOf(segment) === "git" && /(^|\s)git\s+grep(\s|$)/i.test(String(segment));
+}
+
+// A single Bash command segment that is a code-symbol search (grep/rg/ack/ag/findstr/`find -name`/
+// `git grep` over C/C++/C# source), not aimed at a log/build/text path.
 export function isCodeSearchSegment(segment) {
   const exec = execOf(segment);
   const s = String(segment).toLowerCase();
-  const isSearch = SEARCH_EXECS.has(exec) || (exec === "find" && /\s-name(\s|$)/.test(s));
+  const isSearch =
+    SEARCH_EXECS.has(exec) || (exec === "find" && /\s-name(\s|$)/.test(s)) || isGitGrepSegment(segment);
   if (!isSearch) return false;
-  const codeExt = CODE_EXT_RE.test(s);
-  const codeDir = CODE_DIR_RE.test(s);
   const textTarget =
     TEXT_TARGET_RE.test(s) ||
     /(^|[\s"'/\\])(logs?|build|intermediate|saved|node_modules|\.git)[\\/]/.test(s);
+  // git grep defaults to the tracked code tree → a code search unless it explicitly names a text/log path.
+  if (isGitGrepSegment(segment)) return !textTarget;
+  const codeExt = CODE_EXT_RE.test(s);
+  const codeDir = CODE_DIR_RE.test(s);
   return (codeExt || codeDir) && !textTarget;
 }
 
