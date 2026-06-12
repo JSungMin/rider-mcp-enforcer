@@ -100,3 +100,39 @@ test("p4 changes: terse one-line-per-change", () => {
   assert.match(out, /123 2026\/01\/01 user@ws fix the thing/);
   assert.match(out, /124 .* another/);
 });
+
+// --- polish ported from vs-token-safer 0.17.1-4 ---
+test("git status: rename/copy shows the destination path", () => {
+  const raw = "R  old/Name.cs -> new/Renamed.cs";
+  const out = compactGit("status", raw, 60);
+  assert.match(out, /renamed: 1/);
+  assert.match(out, /new\/Renamed\.cs/);
+  assert.doesNotMatch(out, /old\/Name\.cs/, "the source path is dropped; the destination is what exists now");
+});
+
+test("git status: ONE shared listing budget across groups (not max per group)", () => {
+  const raw = [
+    ...Array.from({ length: 8 }, (_, i) => ` M src/M${i}.cpp`),
+    ...Array.from({ length: 8 }, (_, i) => `?? new/N${i}.cpp`),
+  ].join("\n");
+  const out = compactGit("status", raw, 5); // budget 5 shared across modified+untracked
+  // 4-space-indented file lines, excluding the "… +N more" elision markers.
+  const listed = out.split("\n").filter((l) => /^ {4}\S/.test(l) && !l.includes("…")).length;
+  assert.ok(listed <= 5, `shared budget must cap total listed files at 5, got ${listed}`);
+});
+
+test("git diff: a changed binary renders (binary), not +/-", () => {
+  const raw = [
+    "diff --git a/art/tex.png b/art/tex.png",
+    "index 111..222 100644",
+    "Binary files a/art/tex.png and b/art/tex.png differ",
+  ].join("\n");
+  const out = compactGit("diff", raw, 60);
+  assert.match(out, /art\/tex\.png \| \(binary\)/);
+});
+
+test("p4 changes: *pending* marker is preserved, not broken", () => {
+  const raw = "Change 50 on 2026/01/01 by u@w *pending* 'wip feature'";
+  const out = compactP4("changes", raw, 60);
+  assert.match(out, /50 2026\/01\/01 u@w \*pending\* wip feature/);
+});

@@ -79,6 +79,9 @@ function buildVcsRewrite(segment) {
   const ok = exec === "git" ? GIT_COMPACT_SUBS.has(sub) : P4_COMPACT_SUBS.has(sub);
   if (!ok) return null;
   const rest = toks.slice(i + 1); // subcommand + its flags (passed verbatim as argv to the wrapper)
+  // A MUTATING `p4 reconcile` (no -n/--preview) WRITES the workspace — never rewrite it (that would silently
+  // turn the user's mutation into a read-only preview). Only an explicit preview reconcile is compactable.
+  if (exec === "p4" && sub === "reconcile" && !rest.some((t) => t === "-n" || t === "--preview" || /^-[a-z]*n$/i.test(t))) return null;
   if (!rest.every((t) => /^[A-Za-z0-9_.:=/-]+$/.test(t))) return null; // simple tokens only (no pathspec quoting)
   const argv = rest.map((t) => `"${t}"`).join(" ");
   return { bin: exec, sub, cmd: `node "${VCS_CLI}" ${exec} ${argv}` };

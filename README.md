@@ -250,7 +250,9 @@ command still runs, you just get the compacted output. It never blocks. A non-ze
 
 Anything ambiguous — a pipeline, shell quoting, a `$`/redirect, a global flag before the subcommand
 (`git -C path status`), or a non-read-only subcommand (`git commit`) — is left exactly as you typed it; a
-rewrite is never a guess. `git grep` stays a **code** search (routed to the Rider tools, not compacted).
+rewrite is never a guess. A `p4 reconcile` is compacted only in its read-only `-n` preview form (a mutating
+reconcile runs untouched), and the wrapper itself default-denies any non-read-only `git`/`p4` subcommand as
+a second line of defense. `git grep` stays a **code** search (routed to the Rider tools, not compacted).
 Disable with `RIDER_COMPACT_VCS=0`; cap with `RIDER_VCS_MAX` (default 60).
 
 ## Prerequisites

@@ -251,8 +251,10 @@ rider-mcp-enforcer — cumulative token savings (vs forwarding Rider's raw respo
 
 조금이라도 애매하면 — 파이프라인, 셸 따옴표, `$`/리다이렉트, 서브커맨드 앞의 전역 플래그
 (`git -C path status`), 또는 읽기 전용이 아닌 서브커맨드(`git commit`) — 입력 그대로 둡니다. 추측으로
-바꾸지 않습니다. `git grep`은 **코드** 검색으로 남습니다(Rider 도구로 유도, 압축 안 함). 끄려면
-`RIDER_COMPACT_VCS=0`, 상한은 `RIDER_VCS_MAX`(기본 60).
+바꾸지 않습니다. `p4 reconcile`은 읽기 전용 `-n` 미리보기 형태일 때만 압축하고(워크스페이스를 바꾸는
+reconcile은 손대지 않음), 래퍼 자체도 읽기 전용이 아닌 `git`/`p4` 서브커맨드는 2차 방어선으로 거부합니다.
+`git grep`은 **코드** 검색으로 남습니다(Rider 도구로 유도, 압축 안 함). 끄려면 `RIDER_COMPACT_VCS=0`,
+상한은 `RIDER_VCS_MAX`(기본 60).
 
 ## 사전 요구사항
 
