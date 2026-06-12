@@ -181,3 +181,13 @@ test("Bash: `git grep Foo` stays a CODE nudge, not VCS compaction", () => {
   assert.match(r.stdout, /rider-mcp-enforcer/);
   assert.doesNotMatch(r.stdout, /updatedInput/, "git grep is a code search, never a VCS rewrite");
 });
+
+test("Bash: a preview `p4 reconcile -n` IS rewritten (read-only)", () => {
+  const j = vcsOut(runHook({ tool_name: "Bash", tool_input: { command: "p4 reconcile -n" } }).stdout);
+  assert.match(j.hookSpecificOutput.updatedInput.command, /vcs\.mjs" p4 "reconcile" "-n"/);
+});
+
+test("Bash: a MUTATING `p4 reconcile` (no -n) is NOT rewritten (keeps write semantics)", () => {
+  const r = runHook({ tool_name: "Bash", tool_input: { command: "p4 reconcile" } });
+  assert.equal(r.stdout.trim(), "", "must not silently turn a mutation into a preview");
+});

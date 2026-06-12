@@ -40,20 +40,24 @@ function compactGitStatus(raw, max) {
     // porcelain: 2-char XY, space, path. Tolerate `-s` (same shape) and a leading marker.
     const xy = l.slice(0, 2);
     const key = (xy.trim()[0] || xy[0] || "?");
-    const p = l.slice(2).trim().replace(/^"|"$/g, "");
+    let p = l.slice(2).trim().replace(/^"|"$/g, "");
+    // Renames/copies render as `old -> new`; group + show the DESTINATION (the path that now exists).
+    if ((key === "R" || key === "C") && p.includes(" -> ")) p = p.split(" -> ").pop().replace(/^"|"$/g, "");
     if (!byCode.has(key)) byCode.set(key, []);
     byCode.get(key).push(p);
   }
   const out = [`${lines.length} change(s):`];
+  let shown = 0; // ONE shared listing budget across all groups (not per-group — that could dump ~max each)
   for (const [code, paths] of byCode) {
     const label = STATUS[code] || code;
     const dirs = new Map();
     for (const p of paths) dirs.set(topDir(p), (dirs.get(topDir(p)) || 0) + 1);
     const dirSummary = [...dirs].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([d, n]) => `${d}(${n})`).join(", ");
     out.push(`  ${label}: ${paths.length}  [${dirSummary}]`);
-    const per = Math.max(0, Math.min(paths.length, Math.floor(max / Math.max(byCode.size, 1))));
-    for (const p of paths.slice(0, per)) out.push(`    ${p}`);
-    if (paths.length > per) out.push(`    … +${paths.length - per} more ${label}`);
+    const take = Math.min(paths.length, Math.max(0, max - shown));
+    for (const p of paths.slice(0, take)) out.push(`    ${p}`);
+    shown += take;
+    if (paths.length > take) out.push(`    … +${paths.length - take} more ${label}`);
   }
   return out.join("\n");
 }
@@ -87,8 +91,9 @@ function compactGitDiff(raw, max) {
   let cur = null;
   for (const l of lines) {
     const gm = l.match(/^diff --git a\/(.+?) b\/(.+)$/);
-    if (gm) { cur = { file: gm[2], add: 0, del: 0 }; files.push(cur); continue; }
+    if (gm) { cur = { file: gm[2].replace(/^"|"$/g, ""), add: 0, del: 0, binary: false }; files.push(cur); continue; }
     if (!cur) continue;
+    if (/^Binary files /.test(l)) { cur.binary = true; continue; } // a changed binary, no +/- body to count
     if (l.startsWith("+++") || l.startsWith("---")) continue; // file headers, not content
     if (l.startsWith("+")) cur.add++;
     else if (l.startsWith("-")) cur.del++;
@@ -97,10 +102,10 @@ function compactGitDiff(raw, max) {
     // No `diff --git` headers → not a unified diff (likely `--stat` / `--name-only`, already terse). Don't
     // mangle it: dedup + cap the raw output and pass it through.
     const { lines, total } = dedupCap(nonEmpty(raw), max);
-    return lines.join("\n") + (total > lines.length ? `\n… +${total - lines.length} more line(s).` : "");
+    return lines.join("\n") + (total > lines.length ? `\n… +${total - lines.length} more unique line(s).` : "");
   }
   const shown = files.slice(0, max);
-  const body = shown.map((f) => `  ${f.file} | +${f.add} -${f.del}`).join("\n");
+  const body = shown.map((f) => `  ${f.file} | ${f.binary ? "(binary)" : `+${f.add} -${f.del}`}`).join("\n");
   const totAdd = files.reduce((s, f) => s + f.add, 0), totDel = files.reduce((s, f) => s + f.del, 0);
   return `${files.length} file(s) changed, +${totAdd} -${totDel}:\n${body}` + (files.length > shown.length ? `\n… +${files.length - shown.length} more file(s).` : "");
 }
@@ -113,7 +118,7 @@ export function compactGit(sub, raw, max = 60) {
   // Unknown subcommand → generic dedup+cap (still a win on repetitive output).
   const { lines, total } = dedupCap(nonEmpty(raw), max);
   if (!lines.length) return "(no output).";
-  return lines.join("\n") + (total > lines.length ? `\n… +${total - lines.length} more line(s).` : "");
+  return lines.join("\n") + (total > lines.length ? `\n… +${total - lines.length} more unique line(s).` : "");
 }
 
 // ---- perforce ----
@@ -149,9 +154,13 @@ function compactP4Changes(raw, max) {
   const lines = nonEmpty(raw);
   if (!lines.length) return "(no changes).";
   const shown = lines.slice(0, max).map((l) => {
-    const m = l.match(/^Change (\d+) on (\S+) by (\S+)\s+(?:'(.*)'|\*pending\*\s*'(.*)')?/);
+    // `Change N on DATE by user@ws [*pending*] 'desc'` — grab the head fields and the quoted desc wherever
+    // it sits (the optional *pending* marker no longer breaks the match).
+    const m = l.match(/^Change (\d+) on (\S+) by (\S+)/);
     if (!m) return l.slice(0, 200);
-    return `${m[1]} ${m[2]} ${m[3]} ${(m[4] || m[5] || "").slice(0, 80)}`.trim();
+    const pending = /\*pending\*/.test(l) ? "*pending* " : "";
+    const desc = (l.match(/'([^']*)'/) || ["", ""])[1].slice(0, 80);
+    return `${m[1]} ${m[2]} ${m[3]} ${pending}${desc}`.trim();
   });
   return shown.join("\n") + (lines.length > shown.length ? `\n… +${lines.length - shown.length} more change(s).` : "");
 }
@@ -162,7 +171,7 @@ export function compactP4(sub, raw, max = 60) {
   if (s === "changes") return compactP4Changes(raw, max);
   const { lines, total } = dedupCap(nonEmpty(raw), max);
   if (!lines.length) return "(no output).";
-  return lines.join("\n") + (total > lines.length ? `\n… +${total - lines.length} more line(s).` : "");
+  return lines.join("\n") + (total > lines.length ? `\n… +${total - lines.length} more unique line(s).` : "");
 }
 
 // Exposed for the test (deterministic unit coverage of the grouping helpers).
