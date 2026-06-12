@@ -19,7 +19,7 @@ const CONFIG_FILE =
 const KEYS = [
   "riderSseUrl", "projectPath", "maxResults", "escalate", "escalateLimit",
   "maxLineChars", "exclude", "excludeOff", "summarizeTools", "statsFile",
-  "regenCmd", "enginePath", "regenTimeout",
+  "regenCmd", "enginePath", "regenTimeout", "excludeCommands", "lang",
 ];
 const NUM = new Set(["maxResults", "escalateLimit", "maxLineChars", "regenTimeout"]);
 const BOOL = new Set(["escalate", "excludeOff"]);

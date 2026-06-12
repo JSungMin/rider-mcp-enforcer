@@ -13,7 +13,9 @@ function runHook(payload, extraEnv = {}) {
   const r = spawnSync(process.execPath, [HOOK], {
     input: JSON.stringify(payload),
     encoding: "utf8",
-    env: { ...process.env, ...extraEnv },
+    // Default the UI language to English so the suite is locale-independent (a ko-KR dev machine would
+    // otherwise get Korean nudges and fail the English-text assertions). Localization tests override this.
+    env: { ...process.env, RIDER_LANG: "en", ...extraEnv },
   });
   return { stdout: r.stdout || "", stderr: r.stderr || "", code: r.status };
 }
@@ -91,4 +93,126 @@ test("Bash: non-code grep (a log) passes through untouched", () => {
   const r = runHook({ tool_name: "Bash", tool_input: { command: "grep warning build.log" } });
   assert.equal(r.code, 0);
   assert.equal(r.stdout.trim(), "");
+});
+
+// --- git grep: a code search on its own (scans tracked source by default) ---
+test("Bash: `git grep Foo` nudges (tracked-code search, no explicit path needed)", () => {
+  const r = runHook({ tool_name: "Bash", tool_input: { command: "git grep Foo" } });
+  assert.match(r.stdout, /rider-mcp-enforcer/);
+});
+
+test("Bash: `git grep x -- '*.log'` passes (explicit text/log target)", () => {
+  const r = runHook({ tool_name: "Bash", tool_input: { command: "git grep warning Saved/Logs/Editor.log" } });
+  assert.equal(r.stdout.trim(), "");
+});
+
+test("Bash: plain `git status` is NOT a code search (no code nudge, never blocks)", () => {
+  const r = runHook({ tool_name: "Bash", tool_input: { command: "git status" } });
+  assert.notEqual(r.code, 2, "git status must never be blocked as a code search");
+  assert.doesNotMatch(r.stdout, /code-symbol search/, "not the code nudge (it's a VCS command)");
+});
+
+// --- excludeCommands: per-exec opt-out (finer than RIDER_ENFORCE=0) ---
+test("Bash: RIDER_EXCLUDE_COMMANDS=grep leaves a grep code search alone", () => {
+  const r = runHook(
+    { tool_name: "Bash", tool_input: { command: "grep -n Foo src/Foo.cpp" } },
+    { RIDER_EXCLUDE_COMMANDS: "grep" }
+  );
+  assert.equal(r.stdout.trim(), "");
+});
+
+test("Bash: RIDER_EXCLUDE_COMMANDS=rg does NOT exclude grep (still nudges)", () => {
+  const r = runHook(
+    { tool_name: "Bash", tool_input: { command: "grep -n Foo src/Foo.cpp" } },
+    { RIDER_EXCLUDE_COMMANDS: "rg" }
+  );
+  assert.match(r.stdout, /rider-mcp-enforcer/);
+});
+
+// --- VCS output compaction: rewrite a read-only git/p4 command to the compacting wrapper (never blocks) ---
+function vcsOut(stdout) {
+  // The hook emits a JSON object on stdout for a rewrite; parse the last JSON line.
+  const line = stdout.trim().split("\n").filter((l) => l.trim().startsWith("{")).pop();
+  return line ? JSON.parse(line) : null;
+}
+
+test("Bash: `git status` → rewrite to the vcs wrapper (allow + updatedInput), exit 0", () => {
+  const r = runHook({ tool_name: "Bash", tool_input: { command: "git status --porcelain" } });
+  assert.equal(r.code, 0);
+  const j = vcsOut(r.stdout);
+  assert.equal(j.hookSpecificOutput.permissionDecision, "allow");
+  assert.match(j.hookSpecificOutput.updatedInput.command, /vcs\.mjs" git "status" "--porcelain"/);
+});
+
+test("Bash: `git log --oneline -5` → rewrite", () => {
+  const j = vcsOut(runHook({ tool_name: "Bash", tool_input: { command: "git log --oneline -5" } }).stdout);
+  assert.match(j.hookSpecificOutput.updatedInput.command, /vcs\.mjs" git "log"/);
+});
+
+test("Bash: `p4 opened` → rewrite", () => {
+  const j = vcsOut(runHook({ tool_name: "Bash", tool_input: { command: "p4 opened" } }).stdout);
+  assert.match(j.hookSpecificOutput.updatedInput.command, /vcs\.mjs" p4 "opened"/);
+});
+
+test("Bash: `git commit -m x` is NOT compacted (not a read-only sub)", () => {
+  // a quote would also bail, so use a metachar-free non-readonly command
+  const r = runHook({ tool_name: "Bash", tool_input: { command: "git commit --amend" } });
+  assert.equal(r.stdout.trim(), "");
+});
+
+test("Bash: `git status | grep x` is NOT rewritten (pipeline = not a single segment)", () => {
+  const r = runHook({ tool_name: "Bash", tool_input: { command: "git status | grep x" } });
+  assert.equal(r.stdout.trim(), "");
+});
+
+test("Bash: a quoted git command bails (no rewrite)", () => {
+  const r = runHook({ tool_name: "Bash", tool_input: { command: "git log --grep='fix bug'" } });
+  assert.equal(r.stdout.trim(), "");
+});
+
+test("Bash: RIDER_COMPACT_VCS=0 disables the rewrite", () => {
+  const r = runHook(
+    { tool_name: "Bash", tool_input: { command: "git status" } },
+    { RIDER_COMPACT_VCS: "0" }
+  );
+  assert.equal(r.stdout.trim(), "");
+});
+
+test("Bash: `git grep Foo` stays a CODE nudge, not VCS compaction", () => {
+  const r = runHook({ tool_name: "Bash", tool_input: { command: "git grep Foo" } });
+  assert.match(r.stdout, /rider-mcp-enforcer/);
+  assert.doesNotMatch(r.stdout, /updatedInput/, "git grep is a code search, never a VCS rewrite");
+});
+
+test("Bash: a preview `p4 reconcile -n` IS rewritten (read-only)", () => {
+  const j = vcsOut(runHook({ tool_name: "Bash", tool_input: { command: "p4 reconcile -n" } }).stdout);
+  assert.match(j.hookSpecificOutput.updatedInput.command, /vcs\.mjs" p4 "reconcile" "-n"/);
+});
+
+test("Bash: a MUTATING `p4 reconcile` (no -n) is NOT rewritten (keeps write semantics)", () => {
+  const r = runHook({ tool_name: "Bash", tool_input: { command: "p4 reconcile" } });
+  assert.equal(r.stdout.trim(), "", "must not silently turn a mutation into a preview");
+});
+
+// --- localization: RIDER_LANG > config lang > OS locale > en ---
+test("Grep: RIDER_LANG=ko → Korean nudge", () => {
+  const r = grep({ pattern: "Foo", glob: "*.cs" }, { RIDER_LANG: "ko" });
+  assert.match(r.stdout, /Grep 툴|코드 검색/);
+});
+
+test("Grep: RIDER_LANG=en → English nudge", () => {
+  const r = grep({ pattern: "Foo", glob: "*.cs" }, { RIDER_LANG: "en" });
+  assert.match(r.stdout, /Grep tool/);
+});
+
+test("Bash block: RIDER_LANG=ko → reassuring Korean (not a scary error), still exit 2", () => {
+  const r = runHook({ tool_name: "Bash", tool_input: { command: "grep -rn Foo src/" } }, { RIDER_ENFORCE: "block", RIDER_LANG: "ko" });
+  assert.equal(r.code, 2);
+  assert.match(r.stderr, /가로챘어요|아꼈습니다/);
+});
+
+test("Bash block: RIDER_LANG=en → reassuring English header, exit 2", () => {
+  const r = runHook({ tool_name: "Bash", tool_input: { command: "grep -rn Foo src/" } }, { RIDER_ENFORCE: "block", RIDER_LANG: "en" });
+  assert.equal(r.code, 2);
+  assert.match(r.stderr, /caught a Bash code search|nothing broke/);
 });
