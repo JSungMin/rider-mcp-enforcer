@@ -12,7 +12,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Bash|Grep",
+        "matcher": "Bash|Grep|Glob",
         "hooks": [
           {
             "type": "command",

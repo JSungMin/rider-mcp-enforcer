@@ -11,7 +11,7 @@
  * reported coarsely (K-rounded) and labelled "estimated". "Reclaimable" is given as a range, not a point.
  * Raw reads are reported DESCRIPTIVELY ("bypassed"), not as "waste" — some are legitimate fallbacks.
  */
-import { isCodeGrepTool, bashHasCodeSearch } from "../../hooks/detectors.js";
+import { isCodeGrepTool, isCodeGlobTool, bashHasCodeSearch } from "../../hooks/detectors.js";
 
 const CHARS_PER_TOKEN = 4; // rough char→token heuristic; NOT a tokenizer call
 const PENDING_CAP = 5000; // bound the tool_use→result match map (memory guard on huge streams)
@@ -30,11 +30,14 @@ export function contentLen(content) {
 export function classifyBypassRider(name, input) {
   if (name === "Bash") return bashHasCodeSearch(input && input.command) ? "bash" : null;
   if (name === "Grep") return isCodeGrepTool(input) ? "grep" : null;
+  if (name === "Glob") return isCodeGlobTool(input) ? "glob" : null;
   return null;
 }
-// A code search that DID go through the plugin = a rider-search MCP search tool call.
+// A code/file search that DID go through the plugin = a rider-search MCP search tool call (symbol/text +
+// the file-search tools that the Glob nudge points at).
 export function isCapturedRider(name) {
-  return typeof name === "string" && /rider-search__(search_symbol|search_text|search_regex|search_in_files_by)/.test(name);
+  return typeof name === "string" &&
+    /rider-search__(search_symbol|search_text|search_regex|search_in_files_by|find_files_by|search_file)/.test(name);
 }
 
 // Streaming analyzer: feed one parsed JSONL record at a time; counts captured at tool_use, and bypass
@@ -112,20 +115,22 @@ export function formatRiderReport(result, { scope = "this project" } = {}) {
   }
   const bash = result.bypass.bash || { count: 0, outChars: 0 };
   const grep = result.bypass.grep || { count: 0, outChars: 0 };
-  const bypassCount = bash.count + grep.count;
+  const glob = result.bypass.glob || { count: 0, outChars: 0 };
+  const bypassCount = bash.count + grep.count + glob.count;
   const captured = result.capturedCount;
   const total = bypassCount + captured;
   if (total === 0) {
     return `rider discover (${scope}): no in-domain code searches found in the transcript — nothing to report.`;
   }
-  const outK = kTok(bash.outChars + grep.outChars);
+  const outK = kTok(bash.outChars + grep.outChars + glob.outChars);
   const pct = Math.round((captured / total) * 100);
   const out = [];
   out.push(`rider discover — ${scope}  (estimated; output tokens ≈ chars/${CHARS_PER_TOKEN})`);
   out.push("──────────────────────────────────────────────");
-  out.push(`Code searches that bypassed rider-search : ${bypassCount}  (~${outK}K tok of output reached context, measured)`);
+  out.push(`Code/file searches that bypassed rider-search : ${bypassCount}  (~${outK}K tok of output reached context, measured)`);
   out.push(`    • Bash grep/rg/find over source : ${bash.count}`);
   out.push(`    • Grep tool over code           : ${grep.count}`);
+  out.push(`    • Glob tool over code           : ${glob.count}`);
   out.push(`Code searches routed through rider-search : ${captured}   → coverage ${pct}%`);
   out.push("──────────────────────────────────────────────");
   if (outK >= 1) {

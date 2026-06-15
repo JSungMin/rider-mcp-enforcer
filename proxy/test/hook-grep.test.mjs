@@ -20,6 +20,7 @@ function runHook(payload, extraEnv = {}) {
   return { stdout: r.stdout || "", stderr: r.stderr || "", code: r.status };
 }
 const grep = (ti, env) => runHook({ tool_name: "Grep", tool_input: ti }, env);
+const glob = (ti, env) => runHook({ tool_name: "Glob", tool_input: ti }, env);
 
 // --- Grep TOOL: fires only on an explicit code signal ---
 test("Grep: code-ext glob (*.cs) → warn nudge, exit 0", () => {
@@ -63,6 +64,43 @@ test("Grep: non-code type (json) → NO nudge", () => {
 
 test("Grep: log path → NO nudge (log domain belongs to gamedev-log-analyzer)", () => {
   assert.equal(grep({ pattern: "x", path: "Saved/Logs/Editor.log" }).stdout.trim(), "");
+});
+
+// --- agent-directed concrete call embedded in the Grep nudge ---
+test("Grep: a bare-identifier nudge embeds the ready-to-use search_symbol call", () => {
+  const r = grep({ pattern: "AMyActor", glob: "*.cpp" });
+  assert.match(r.stdout, /search_symbol/);
+  assert.match(r.stdout, /AMyActor/);
+});
+
+test("Grep: a non-identifier pattern embeds search_text (not search_symbol)", () => {
+  const r = grep({ pattern: "Foo::Bar", glob: "*.cpp" });
+  assert.match(r.stdout, /search_text q=/);
+});
+
+// --- Glob TOOL: warn-only nudge toward Rider's index-based file search ---
+test("Glob: code-ext glob (**/*.cpp) → warn nudge with a find_files_by_name_keyword call", () => {
+  const r = glob({ pattern: "**/*.cpp" });
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /rider-mcp-enforcer/);
+  assert.match(r.stdout, /find_files_by_name_keyword/);
+});
+
+test("Glob: code dir in path (Source/) → warn nudge", () => {
+  assert.match(glob({ pattern: "**/*", path: "Source/Game" }).stdout, /rider-mcp-enforcer/);
+});
+
+test("Glob: doc glob (*.md) → NO nudge", () => {
+  assert.equal(glob({ pattern: "**/*.md" }).stdout.trim(), "");
+});
+
+test("Glob: log glob (Saved/**/*.log) → NO nudge (logs are gamedev-log's domain)", () => {
+  assert.equal(glob({ pattern: "Saved/**/*.log" }).stdout.trim(), "");
+});
+
+test("Glob: never blocks, even under RIDER_ENFORCE=block (it's a fallback, like Grep)", () => {
+  const r = glob({ pattern: "**/*.cpp" }, { RIDER_ENFORCE: "block" });
+  assert.equal(r.code, 0);
 });
 
 // --- Grep TOOL: warn-only, never block; off silences ---

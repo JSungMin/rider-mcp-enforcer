@@ -22,6 +22,24 @@ test("classifiers reuse the hook detectors (code bypass vs captured vs neither)"
   assert.equal(classifyBypassRider("Grep", { pattern: "x" }), null); // bare cwd
   assert.equal(isCapturedRider("mcp__plugin_rider-mcp-enforcer_rider-search__search_symbol"), true);
   assert.equal(isCapturedRider("Bash"), false);
+  // Glob tool over code = a bypass; doc/log glob = not. Rider file-search tools count as captured.
+  assert.equal(classifyBypassRider("Glob", { pattern: "**/*.cpp" }), "glob");
+  assert.equal(classifyBypassRider("Glob", { pattern: "**/*", path: "Source/Game" }), "glob");
+  assert.equal(classifyBypassRider("Glob", { pattern: "**/*.md" }), null);
+  assert.equal(isCapturedRider("mcp__plugin_rider-mcp-enforcer_rider-search__find_files_by_name_keyword"), true);
+});
+
+test("analyze: a code Glob bypass is counted and shown in the report", () => {
+  const t = jsonl(
+    use("a", "Glob", { pattern: "**/*.cpp" }),
+    res("a", "Source/A.cpp\nSource/B.cpp\n".repeat(100)),
+    use("b", "mcp__plugin_rider-mcp-enforcer_rider-search__find_files_by_name_keyword", { keyword: "Actor" }),
+    res("b", "ok"),
+  );
+  const r = analyzeJsonl(t);
+  assert.equal(r.bypass.glob.count, 1);
+  assert.equal(r.capturedCount, 1);
+  assert.match(formatRiderReport(r), /Glob tool over code\s+: 1/);
 });
 
 test("analyze: counts bypass (at result) + captured (at use), measures output chars", () => {

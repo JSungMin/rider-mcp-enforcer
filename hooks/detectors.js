@@ -64,6 +64,23 @@ export function isCodeGrepTool(ti) {
   return globIsCode || typeIsCode || pathIsCode;
 }
 
+// The basename of a glob pattern (last path segment; a {ts,tsx} brace-set is kept as a hint).
+export function globBasename(pat) {
+  const seg = String(pat || "").replace(/\\/g, "/").split("/").pop() || "";
+  return seg.replace(/[{}]/g, "");
+}
+
+// The built-in Glob TOOL targeting code: a code-ext glob (`**/*.cpp`) or a code dir in the path
+// (`Source/…`). A doc/log/asset glob/path is skipped. High-precision (no generic `Name.ext` clause) so a
+// `.uasset`/asset glob isn't pestered — warn-only, like the Grep-tool nudge.
+export function isCodeGlobTool(ti) {
+  if (!ti || typeof ti !== "object") return false;
+  const base = globBasename(ti.pattern).toLowerCase();
+  const p = String(ti.path || "").replace(/\\/g, "/").toLowerCase();
+  if (TEXT_TARGET_RE.test(base) || TEXT_TARGET_RE.test(p)) return false;
+  return CODE_EXT_RE.test(base) || CODE_DIR_RE.test(p);
+}
+
 // Split a Bash command into segments and test if ANY is a code search (mirrors the hook's logic).
 export function bashHasCodeSearch(command) {
   return String(command || "")

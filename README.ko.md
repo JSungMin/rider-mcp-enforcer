@@ -111,7 +111,7 @@ Rider 2025.2+ 는 MCP 서버를 내장하고 있고, (라이브로 확인된) `s
 
 | 레이어 | 파일 | 효과 |
 | --- | --- | --- |
-| **강제 훅(hook)** | `hooks/block-code-grep.js` | C/C++/C# 소스를 노린 Bash `grep`/`rg`/`find -name`/`git grep`**과 내장 Grep 도구**를 가로채 Rider MCP 도구로 유도. **Bash는 기본 `warn`** — 명령은 그대로 실행되고 nudge가 모델 컨텍스트에 주입됩니다. `RIDER_ENFORCE=block`이면 하드 차단, `=0`이면 끔. **Grep 도구는 warn 전용이라 절대 차단하지 않습니다** — 방금 편집해 Rider가 아직 인덱싱 못 한 파일에선 Grep이 올바른 폴백이라, 명시적 코드 glob/type/path일 때만 살짝 nudge만 합니다(`=0`이면 침묵). MCP 검색과 Read 도구는 설계상 여전히 우회. 비코드 텍스트(로그/md/json)는 통과. |
+| **강제 훅(hook)** | `hooks/block-code-grep.js` | C/C++/C# 소스를 노린 Bash `grep`/`rg`/`find -name`/`git grep`**과 내장 Grep 도구**를 가로채 Rider MCP 도구로 유도. **Bash는 기본 `warn`** — 명령은 그대로 실행되고 nudge가 모델 컨텍스트에 주입됩니다. `RIDER_ENFORCE=block`이면 하드 차단, `=0`이면 끔. **Grep·Glob 도구는 warn 전용이라 절대 차단하지 않습니다** — 방금 편집해 Rider가 아직 인덱싱 못 한 파일(또는 Rider 미연결)에선 올바른 폴백이라 명시적 코드 신호일 때만 nudge합니다: Grep nudge는 바로 쓸 수 있는 `search_symbol`/`search_text` 호출을 박아주고, 코드 **Glob**은 Rider의 인덱스 기반 파일 검색(`find_files_by_name_keyword` / `find_files_by_glob`)으로 유도합니다. `=0`이면 침묵. (LSP 기반 형제 vs-token-safer와 달리 심볼 헌트 Grep을 **차단으로 격상하지 않습니다** — 이 Rider 빌드의 시맨틱 검색은 더 약하고 IDE 의존적이라 차단하면 더 나쁜 도구로 가거나 모델을 막다른 길에 빠뜨릴 수 있음.) MCP 검색과 Read 도구는 설계상 우회. 비코드 텍스트(로그/md/json)는 통과. |
 | **`code-locator` 서브에이전트** | `agents/code-locator.md` | "X 어디 정의 / Y 호출처 / W 파일 찾기"를 컨텍스트 격리 서브에이전트에 위임 — Rider 인덱스를 내부에서 쓰고 간결한 `file:line` 테이블만 반환, raw 매치는 컨텍스트에 안 들어옴. 훅 마찰 없는 정확도+토큰 이득. |
 | **라우팅 스킬** | `skills/rider-search/SKILL.md` | Karpathy 스타일 규칙: 심볼/파일/텍스트 검색은 Rider 도구 우선, grep은 최후수단. |
 | **요약 프록시** | `proxy/` | Rider MCP 앞단의 MCP 서버. JSON 응답(`{items:[{filePath,startLine,lineText}],more}`)을 간결한 `path:line  text`로 변환하고 `RIDER_MAX_RESULTS`로 상한, 기본 `projectPath`를 자동 주입. 대형 코드베이스의 결과 폭발이 컨텍스트를 터뜨리는 걸 막음. |
