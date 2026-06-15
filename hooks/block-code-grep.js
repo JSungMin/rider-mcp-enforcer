@@ -25,7 +25,7 @@
 
 // Pure classifiers live in a side-effect-free module so the `discover` analyzer can share the EXACT
 // same detection without importing this hook's stdin/exit behavior (single source of truth).
-import { isCodeSearchSegment, isCodeGrepTool, execOf } from "./detectors.js";
+import { isCodeSearchSegment, isCodeGrepTool, isCodeGlobTool, globBasename, execOf } from "./detectors.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -118,16 +118,52 @@ function emitWarn(text) {
 // Honest nudge (~50 tok). Does NOT claim Rider is "semantically complete" — this Rider build has no
 // semantic find-references; references are an indexed string match (same blind spots as grep). The real
 // edge is the token-cap + INCOMPLETE banner discipline, and search_symbol being semantic for DEFINITIONS.
-const GREP_NUDGE = KO
-  ? "[rider-mcp-enforcer] Grep 툴로 C#/UE-C++ 코드 검색 중이에요. 이미 자리잡은 코드의 참조 찾기·데드코드는 " +
-    "rider-search(server: 'rider-search')를 권장합니다 — 토큰캡되고, 결과가 잘리면 INCOMPLETE 배너로 알려줘서 " +
-    "부분 목록으로 잘못 판단하지 않게 해줘요. `search_symbol`은 정의(definition)에 한해 시맨틱입니다. 방금 수정했거나 " +
-    "미인덱스 파일(Rider 인덱스는 막 저장한 변경을 늦게 반영), 또는 빠른 텍스트 확인이면 Grep 그대로가 맞아요 — 진행하세요. 끄기: RIDER_ENFORCE=0."
-  : "[rider-mcp-enforcer] Code search via the Grep tool on C#/UE-C++. " +
-    "For find-references / dead-code on ESTABLISHED code, prefer rider-search (server: 'rider-search') — " +
-    "it's token-capped and flags INCOMPLETE result sets so you don't act on a partial list; `search_symbol` " +
-    "is semantic for definitions. For a JUST-edited / unindexed file (Rider's index lags fresh saves) or a " +
-    "quick literal peek, Grep is the right call — carry on. Disable: RIDER_ENFORCE=0.";
+// Agent-directed nudge with a READY-TO-USE equivalent call — a model handed the exact tool + args complies
+// far more often than one handed a generic pointer (ported from vts's grepNudgeFor). HONEST about rider's
+// build: search_symbol = semantic DEFINITIONS only; search_text = indexed string match (references, same
+// blind spots as grep). The kill-metric marker "via the Grep tool" is preserved.
+function grepNudgeFor(ti) {
+  const pat = String(ti.pattern || "");
+  let concrete = "";
+  if (pat && pat.length <= 120 && !/[\r\n"]/.test(pat)) {
+    const ident = /^[A-Za-z_][A-Za-z0-9_]*$/.test(pat);
+    if (KO) {
+      concrete = ident
+        ? ` 바로 쓸 수 있는 토큰캡 호출: search_symbol q="${pat}" (정의), 또는 search_text q="${pat}" (문자열/참조).`
+        : ` 바로 쓸 수 있는 토큰캡 호출: search_text q="${pat}".`;
+    } else {
+      concrete = ident
+        ? ` Equivalent token-capped calls: search_symbol q="${pat}" (its definition), or search_text q="${pat}" (string/reference matches).`
+        : ` Equivalent token-capped call: search_text q="${pat}".`;
+    }
+  }
+  return (KO
+    ? "[rider-mcp-enforcer] Grep 툴로 C#/UE-C++ 코드 검색 중이에요. 이미 자리잡은 코드면 rider-search(server: " +
+      "'rider-search')가 토큰캡 + INCOMPLETE 배너로 더 안전해요. 어시스턴트는 이 검색을 의도에 맞는 rider 도구로 다시 실행하세요."
+    : "[rider-mcp-enforcer] Code search via the Grep tool on C#/UE-C++. On ESTABLISHED code, rider-search " +
+      "(server: 'rider-search') is token-capped and flags INCOMPLETE sets. The assistant should re-run this " +
+      "lookup with the rider tool matching the intent.") + concrete + (KO
+    ? " 방금 수정했거나 미인덱스 파일, 빠른 텍스트 확인이면 Grep 그대로가 맞아요. 끄기: RIDER_ENFORCE=0."
+    : " For a just-edited / unindexed file or a quick literal peek, Grep is the right call. Disable: RIDER_ENFORCE=0.");
+}
+
+// Glob TOOL — the built-in filename search. Rider's index-based file search (find_files_by_name_keyword /
+// search_file / find_files_by_glob) won't choke on a giant UE tree. Warn-only (a different tool, can't
+// updatedInput-rewrite a Glob); the glob basename is the ready-to-use keyword.
+function globNudgeFor(ti) {
+  const base = globBasename(ti.pattern);
+  const call = base && base.length <= 80
+    ? (KO ? ` 바로 쓸 수 있는 토큰캡 호출: find_files_by_name_keyword keyword="${base}".`
+          : ` Equivalent token-capped call: find_files_by_name_keyword keyword="${base}".`)
+    : "";
+  return (KO
+    ? "[rider-mcp-enforcer] Glob 툴로 파일명 검색 중이에요. Rider의 파일 검색(find_files_by_name_keyword / " +
+      "search_file / find_files_by_glob)은 인덱스 기반이라 거대 트리(UE)에서도 안 멈춰요." + call +
+      " 작은 트리 빠른 확인이면 Glob 그대로 OK. 끄기: RIDER_ENFORCE=0."
+    : "[rider-mcp-enforcer] Filename search via the Glob tool. Rider's file search (find_files_by_name_keyword " +
+      "/ search_file / find_files_by_glob) is index-based and won't time out on a giant tree (UE)." + call +
+      " On a small tree a quick Glob is fine. Disable: RIDER_ENFORCE=0.");
+}
 
 function bashNudge(mode) {
   const blocked = mode === "block";
@@ -177,9 +213,18 @@ process.stdin.on("end", () => {
 
   const setup = notSetUp() ? SETUP_LINE : "";
 
-  // Grep TOOL — warn-only, never block (Grep is the fallback; denying it would strand the model).
+  // Grep TOOL — warn-only, never block (Grep is the fallback; denying it would strand the model, and on
+  // this Rider build the semantic tools are weaker/IDE-dependent — so unlike vts we do NOT escalate a
+  // symbol-hunt Grep to a block).
   if (toolName === "Grep") {
-    if (isCodeGrepTool(ti)) emitWarn(GREP_NUDGE + setup);
+    if (isCodeGrepTool(ti)) emitWarn(grepNudgeFor(ti) + setup);
+    process.exit(0);
+  }
+
+  // Glob TOOL — warn-only nudge toward Rider's index-based file search (never block — a quick glob on a
+  // small tree is fine; the point is to steer the big/UE case off a filesystem-walk dead-end).
+  if (toolName === "Glob") {
+    if (isCodeGlobTool(ti)) emitWarn(globNudgeFor(ti) + setup);
     process.exit(0);
   }
 
