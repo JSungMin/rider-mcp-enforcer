@@ -114,7 +114,7 @@ Rider 2025.2+ 는 MCP 서버를 내장하고 있고, (라이브로 확인된) `s
 | **강제 훅(hook)** | `hooks/block-code-grep.js` | C/C++/C# 소스를 노린 Bash `grep`/`rg`/`find -name`/`git grep`**과 내장 Grep 도구**를 가로채 Rider MCP 도구로 유도. **Bash는 기본 `warn`** — 명령은 그대로 실행되고 nudge가 모델 컨텍스트에 주입됩니다. `RIDER_ENFORCE=block`이면 하드 차단, `=0`이면 끔. **Grep·Glob 도구는 warn 전용이라 절대 차단하지 않습니다** — 방금 편집해 Rider가 아직 인덱싱 못 한 파일(또는 Rider 미연결)에선 올바른 폴백이라 명시적 코드 신호일 때만 nudge합니다: Grep nudge는 바로 쓸 수 있는 `search_symbol`/`search_text` 호출을 박아주고, 코드 **Glob**은 Rider의 인덱스 기반 파일 검색(`find_files_by_name_keyword` / `find_files_by_glob`)으로 유도합니다. `=0`이면 침묵. (LSP 기반 형제 vs-token-safer와 달리 심볼 헌트 Grep을 **차단으로 격상하지 않습니다** — 이 Rider 빌드의 시맨틱 검색은 더 약하고 IDE 의존적이라 차단하면 더 나쁜 도구로 가거나 모델을 막다른 길에 빠뜨릴 수 있음.) MCP 검색과 Read 도구는 설계상 우회. 비코드 텍스트(로그/md/json)는 통과. |
 | **`code-locator` 서브에이전트** | `agents/code-locator.md` | "X 어디 정의 / Y 호출처 / W 파일 찾기"를 컨텍스트 격리 서브에이전트에 위임 — Rider 인덱스를 내부에서 쓰고 간결한 `file:line` 테이블만 반환, raw 매치는 컨텍스트에 안 들어옴. 훅 마찰 없는 정확도+토큰 이득. |
 | **라우팅 스킬** | `skills/rider-search/SKILL.md` | Karpathy 스타일 규칙: 심볼/파일/텍스트 검색은 Rider 도구 우선, grep은 최후수단. |
-| **요약 프록시** | `proxy/` | Rider MCP 앞단의 MCP 서버. JSON 응답(`{items:[{filePath,startLine,lineText}],more}`)을 간결한 `path:line  text`로 변환하고 `RIDER_MAX_RESULTS`로 상한, 기본 `projectPath`를 자동 주입. 대형 코드베이스의 결과 폭발이 컨텍스트를 터뜨리는 걸 막음. |
+| **요약 프록시** | `proxy/` | Rider MCP 앞단의 MCP 서버. JSON 응답(`{items:[{filePath,startLine,lineText}],more}`)을 간결한 `path:line  text`로 변환하고 `RIDER_MAX_RESULTS`로 상한, 공통 루트 경로를 `under <prefix>/`로 한 번만 묶고, 기본 `projectPath`를 자동 주입. 대형 코드베이스의 결과 폭발이 컨텍스트를 터뜨리는 걸 막음. |
 
 > 범위를 분명히 하자면, 심볼/파일 검색은 Rider MCP만으로도 됩니다. 이 플러그인이 그 위에 더하는 건
 > 강제, 토큰 제어, projectPath 처리입니다.
@@ -348,6 +348,8 @@ Claude Code는 마켓플레이스 repo를 캐시하므로 새 커밋이 **자동
 | `RIDER_EXCLUDE_COMMANDS` | — | 훅이 건드리지 않을 실행기(`grep`/`rg`/`ack`/`ag`/`findstr`/`find`/`git`) 콤마 목록 — 전역 `RIDER_ENFORCE=0`보다 세밀함. config.json의 `excludeCommands`(배열)로도 설정 가능. |
 | `RIDER_COMPACT_VCS` | `1` | `0`/`off`이면 읽기 전용 `git`/`p4` 출력 압축 rewrite 비활성화 ([VCS 출력 압축](#vcs-출력-압축-git--p4) 참고). |
 | `RIDER_VCS_MAX` | `60` | 압축된 `git`/`p4` 결과에서 유지할 최대 묶음 줄 수. |
+| `RIDER_COMPACT_RESULTS` | `1` | `0`/`off`이면 **공통 접두어 묶기** 해제 — UE 트리에선 모든 매치가 같은 긴 루트(`G:/Proj/Source/Game/…`)를 반복하므로, 프록시가 그 루트를 `under <prefix>/`로 한 번만 출력하고 나머지는 상대 경로로 들여씀(전체 경로는 `<prefix>/<tail>`로 복원 가능). |
+| `RIDER_TEXT_STEER` | `1` | `0`/`off`이면 **텍스트→심볼 유도** 해제 — 원시 텍스트 검색(`search_text`/`search_regex`/`search_in_files_*`) 쿼리가 사실 심볼 사냥(`<Type>` 인자, `::`, CamelCase 식별자)이면 `search_symbol`로 한 줄 유도. Rider의 한계에 정직: C++ 심볼 인덱스가 놓칠 수 있으므로 텍스트 검색을 fallback으로 유지(완전성 주장 안 함). |
 | `RIDER_LANG` | _(OS 로케일)_ | 사람이 읽는 nudge/차단 메시지 언어 — `ko` 또는 `en`. OS 로케일에서 자동 감지(한국어 로케일이면 한국어). 여기서 또는 config.json의 `lang`으로 덮어쓰기. |
 | `RIDER_REGEN_CMD` | — | `rider_regen_project`: 자동 탐지를 건너뛰는 명시적 재생성 명령 템플릿(`{uproject}`/`{engine}` 토큰). 자동 탐지가 엉뚱한 명령을 고르거나 macOS/Linux일 때 설정. |
 | `RIDER_ENGINE_PATH` | — | `rider_regen_project`: Unreal 엔진 디렉터리. 레지스트리 자동 탐지를 덮어씀. |
