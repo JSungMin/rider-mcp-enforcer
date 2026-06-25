@@ -21,6 +21,8 @@ import {
   factorCommonPrefix,
   symbolHuntInText,
   textSymbolSteer,
+  altSymbols,
+  usesSteer,
 } from "../src/server.js";
 
 const BS = String.fromCharCode(92); // backslash, kept out of source literals to avoid escaping traps
@@ -161,7 +163,7 @@ test("summarize: a non-trivial win gets a per-call savings line", () => {
     lineText: `a matched line of code ${i} with enough text that the raw response is big`,
   }));
   const text = summarize({ content: [{ type: "text", text: JSON.stringify({ items, more: false }) }] }).content[0].text;
-  assert.match(text, /✓ Saved ~[\d,]+ tokens here/);
+  assert.match(text, /✓ Saved ~[\d,]+ tok here/);
 });
 
 test("summarize: a tiny result gets NO savings footer (no noise)", () => {
@@ -284,4 +286,68 @@ test("RIDER_TEXT_STEER=0 silences the steer", () => {
     if (prev === undefined) delete process.env.RIDER_TEXT_STEER;
     else process.env.RIDER_TEXT_STEER = prev;
   }
+});
+
+// ---- alternation steer (ported from vs-token-safer 0.30, #150, retargeted to search_symbol) ----
+
+test("altSymbols parses an N-branch symbol alternation; null on keyword/no-cue", () => {
+  assert.deepEqual(altSymbols("getFoo|setBar|resetBaz"), ["getFoo", "setBar", "resetBaz"]); // N=3, general
+  assert.deepEqual(altSymbols("get_value|set_value"), ["get_value", "set_value"]); // snake
+  assert.deepEqual(altSymbols("Foo|Foo|Bar_baz"), ["Foo", "Bar_baz"]); // deduped, snake cue carries
+  assert.equal(altSymbols("TODO|FIXME"), null); // ALL-CAPS keyword → not symbols
+  assert.equal(altSymbols("GET|POST|HEAD"), null); // HTTP verbs → not symbols
+  assert.equal(altSymbols("a|b"), null); // no CamelCase/snake cue
+  assert.equal(altSymbols("MyManagerClass"), null); // no `|`
+  assert.equal(altSymbols("Foo|bar baz"), null); // a non-identifier branch → a regex
+});
+
+test("textSymbolSteer steers an alternation to search_symbol per branch, regardless of truncation", () => {
+  const note = textSymbolSteer("search_text", { query: "GetSyncModeComponent|GetSmoothSyncComponent" }, "8 match(es)");
+  assert.match(note, /ALTERNATION of 2 symbols/);
+  assert.match(note, /search_symbol q="GetSyncModeComponent"/);
+  assert.match(note, /search_symbol q="GetSmoothSyncComponent"/);
+  assert.doesNotMatch(note, /find_references/, "Rider has no find_references — must not promise it");
+});
+
+test("textSymbolSteer caps an alternation list at 6 shown + a +N more", () => {
+  const q = "aCamelOne|bCamelTwo|cCamelThree|dCamelFour|eCamelFive|fCamelSix|gCamelSeven";
+  const note = textSymbolSteer("search_text", { query: q }, "x");
+  assert.match(note, /ALTERNATION of 7 symbols/);
+  assert.match(note, /\(\+1 more\)/);
+});
+
+// ---- "where is it USED?" steer (ported from vs-token-safer 0.33, #154, retargeted to search_text) ----
+
+test("usesSteer points a found search_symbol at search_text for references; stays honest", () => {
+  const note = usesSteer("search_symbol", { q: "AMyActor" }, "under G:/P/\n  Foo.cpp:10  class AMyActor");
+  assert.match(note, /search_text q="AMyActor"/);
+  assert.match(note, /DEFINED/);
+  assert.match(note, /can miss on un-indexed/);
+});
+
+test("usesSteer stays quiet: non-symbol tool, empty result, INCOMPLETE, or a non-identifier query", () => {
+  assert.equal(usesSteer("search_text", { q: "AMyActor" }, "hits"), "", "only fires on a symbol tool");
+  assert.equal(usesSteer("search_symbol", { q: "AMyActor" }, "(no results)"), "", "nothing found → no point");
+  assert.equal(usesSteer("search_symbol", { q: "AMyActor" }, "⚠ INCOMPLETE RESULTS — showing 50 of 200"), "", "partial def set → noise");
+  assert.equal(usesSteer("search_symbol", { q: "Foo::Bar" }, "hit"), "", "a phrase/regex, not a single identifier");
+});
+
+test("RIDER_USES_STEER=0 silences the uses steer", () => {
+  const prev = process.env.RIDER_USES_STEER;
+  process.env.RIDER_USES_STEER = "0";
+  try {
+    assert.equal(usesSteer("search_symbol", { q: "AMyActor" }, "hit"), "");
+  } finally {
+    if (prev === undefined) delete process.env.RIDER_USES_STEER;
+    else process.env.RIDER_USES_STEER = prev;
+  }
+});
+
+// ---- savings line: shortened wording (ported from vs-token-safer #169) ----
+
+test("summarize emits the shortened savings line ('tok here … vs raw')", () => {
+  const items = Array.from({ length: 60 }, (_, i) => ({ filePath: `G:/P/Source/F${i}.cpp`, line: i, text: "x".repeat(80) }));
+  const text = summarize({ content: [{ type: "text", text: JSON.stringify({ items, more: false }) }] }).content[0].text;
+  assert.match(text, /✓ Saved ~[\d,]+ tok here \(Rider index, summarized vs raw\)\./);
+  assert.doesNotMatch(text, /tokens here/, "old wording must be gone");
 });

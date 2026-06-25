@@ -25,7 +25,7 @@
 
 // Pure classifiers live in a side-effect-free module so the `discover` analyzer can share the EXACT
 // same detection without importing this hook's stdin/exit behavior (single source of truth).
-import { isCodeSearchSegment, isCodeGrepTool, isCodeGlobTool, globBasename, execOf } from "./detectors.js";
+import { isCodeSearchSegment, isCodeGrepTool, isCodeGlobTool, globBasename, execOf, hasFileOpsContext } from "./detectors.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -236,7 +236,12 @@ process.stdin.on("end", () => {
   // whose executable is in excludeCommands is left alone (finer than the global RIDER_ENFORCE=0).
   const excluded = excludedCommands();
   const segments = cmd.split(/\|\||&&|[|;&\n]/g);
-  const hit = segments.some((seg) => seg.trim() && isCodeSearchSegment(seg) && !excluded.has(execOf(seg)));
+  // A `find` in a command that also runs a file-op (cp/tar/xargs/du/…) is plumbing for that op, not a code
+  // search — exclude it so a backup/copy script isn't nudged (and isn't steered to a token-capped file list).
+  const fileOps = hasFileOpsContext(segments);
+  const hit = segments.some(
+    (seg) => seg.trim() && isCodeSearchSegment(seg) && !excluded.has(execOf(seg)) && !(fileOps && execOf(seg) === "find"),
+  );
 
   if (hit) {
     const nudge = bashNudge(mode) + setup;

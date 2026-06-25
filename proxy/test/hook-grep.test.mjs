@@ -232,6 +232,40 @@ test("Bash: a MUTATING `p4 reconcile` (no -n) is NOT rewritten (keeps write sema
   assert.equal(r.stdout.trim(), "", "must not silently turn a mutation into a preview");
 });
 
+// --- file-ops find: a backup/copy enumeration is NOT a code search (ported from vts #147) ---
+test("Bash: a genuine `find … -name '*.cpp'` (no file-op) still nudges", () => {
+  const r = runHook({ tool_name: "Bash", tool_input: { command: "find Source -name '*.cpp'" } });
+  assert.match(r.stdout, /rider-mcp-enforcer/);
+});
+
+test("Bash: `find … -name '*.cpp' -exec cp …` is a file-op, NOT nudged", () => {
+  const r = runHook({ tool_name: "Bash", tool_input: { command: "find Source -name '*.cpp' -exec cp {} backup/ ;" } });
+  assert.equal(r.stdout.trim(), "", "a file-ops find must not be steered to a token-capped file list");
+});
+
+test("Bash: `find … -name '*.cpp' -delete` is a file-op, NOT nudged", () => {
+  const r = runHook({ tool_name: "Bash", tool_input: { command: "find Source -name '*.cpp' -delete" } });
+  assert.equal(r.stdout.trim(), "");
+});
+
+test("Bash: `find … -name '*.cpp' | xargs cp` (file-op context) NOT nudged", () => {
+  const r = runHook({ tool_name: "Bash", tool_input: { command: "find Source -name '*.cpp' | xargs cp -t backup" } });
+  assert.equal(r.stdout.trim(), "");
+});
+
+test("Bash: a backup find under RIDER_ENFORCE=block is NOT blocked (exit 0)", () => {
+  const r = runHook(
+    { tool_name: "Bash", tool_input: { command: "du -sh .; find Source -name '*.uproject' -exec cp {} bak/ ;" } },
+    { RIDER_ENFORCE: "block" }
+  );
+  assert.equal(r.code, 0, "a file-ops find must never be blocked (would corrupt a backup)");
+});
+
+test("Bash: a literal grep alongside a file-op is STILL nudged (grep isn't relaxed)", () => {
+  const r = runHook({ tool_name: "Bash", tool_input: { command: "cp a b; grep -n Foo src/Foo.cpp" } });
+  assert.match(r.stdout, /rider-mcp-enforcer/, "only find is relaxed by file-op context, not grep");
+});
+
 // --- localization: RIDER_LANG > config lang > OS locale > en ---
 test("Grep: RIDER_LANG=ko → Korean nudge", () => {
   const r = grep({ pattern: "Foo", glob: "*.cs" }, { RIDER_LANG: "ko" });

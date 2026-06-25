@@ -423,6 +423,21 @@ export function symbolHuntInText(q) {
   if (!cand.length) return null;
   return cand.sort((a, b) => b.length - a.length)[0];
 }
+// An ALTERNATION of symbols (`A|B|C`, any N) — the model reaches for a text scan because a single
+// search_symbol takes ONE name, not a regex, so one semantic call can't answer A|B. Pull every identifier
+// branch so the steer can point at search_symbol PER symbol. Returns the deduped identifier list, or null
+// when it isn't a symbol alternation: every `|`-branch must be a bare identifier AND at least one must carry
+// a CamelCase/snake cue (so a keyword/content alternation — TODO|FIXME, GET|POST|HEAD — is left alone, real
+// text filters, matching how the grep-block hook classifies these). (Ported from vs-token-safer 0.30, #150.)
+export function altSymbols(q) {
+  const s = String(q || "");
+  if (!s.includes("|") || s.length > 200) return null;
+  const branches = s.split("|").map((b) => b.trim()).filter(Boolean);
+  if (branches.length < 2) return null;
+  if (!branches.every((b) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(b))) return null; // any non-identifier branch → a regex, not a symbol list
+  if (!branches.some((b) => /[a-z][A-Z]|[a-z0-9]_[a-z]/.test(b))) return null; // no CamelCase/snake cue → keyword alternation, leave it
+  return [...new Set(branches)];
+}
 // Build the one-line symbol steer for a text-search TOOL call, or "". Fires only on a clear symbol hunt
 // that benefits: the result was INCOMPLETE (completeness now matters) OR the query carries a `<>`/`::` cue
 // — a CamelCase text search that completed fine isn't nagged. HONEST about Rider's ceiling: unlike the
@@ -431,6 +446,19 @@ export function symbolHuntInText(q) {
 export function textSymbolSteer(name, args, summarizedText) {
   if (!textSteerOn() || !TEXT_SEARCH_RE.test(String(name || ""))) return "";
   const q = pickQuery(args);
+  // Alternation of symbols (A|B|C, any N) → steer to search_symbol on EACH (a single search_symbol can't
+  // take a regex; the text scan matched the whole alternation as line text). Fires regardless of
+  // truncation — an alternation of symbols always has a strictly better per-symbol path.
+  const alts = altSymbols(q);
+  if (alts && alts.length >= 2) {
+    const list = alts.slice(0, 6).map((a) => `search_symbol q="${a}"`).join(" · ");
+    const more = alts.length > 6 ? ` (+${alts.length - 6} more)` : "";
+    return (
+      `\n\n↪ "${q}" is an ALTERNATION of ${alts.length} symbols — this text scan matched it as one regex ` +
+      `(line text). A single search_symbol can't take A|B; run ONE per symbol via Rider's semantic index: ${list}${more}. ` +
+      `(Rider's C++ symbol index can miss on un-indexed / UE-macro code, so keep this text search as the fallback.)`
+    );
+  }
   const sym = symbolHuntInText(q);
   if (!sym) return "";
   const strong = /::|<|>/.test(String(q));
@@ -441,6 +469,26 @@ export function textSymbolSteer(name, args, summarizedText) {
     `semantic index (definitions) — usually far smaller and without a text scan's false positives` +
     (incomplete ? ", and not truncated like this scan was" : "") +
     `. (Rider's C++ symbol index can miss on un-indexed / UE-macro code, so keep this text search as the fallback.)`
+  );
+}
+
+// ---- "where is it USED?" steer (ported from vs-token-safer 0.33, #154, retargeted) ----
+const usesSteerOn = () => !isOff(cfg("RIDER_USES_STEER", "usesSteer", "1"));
+// After a focused search_symbol found the DECLARATION(s), the natural next step is "where is it USED?".
+// vs-token-safer points at a semantic find_references; Rider's MCP has no semantic references, so we point
+// at search_text (its indexed string match) and stay HONEST that it can miss. Fires only on a single-
+// identifier symbol lookup that returned something and was not flagged INCOMPLETE (a huge/partial def set
+// is noise, not a clean "now find the uses" moment).
+export function usesSteer(name, args, summarizedText) {
+  if (!usesSteerOn() || !/search_symbol/i.test(String(name || ""))) return "";
+  const q = pickQuery(args);
+  if (!q || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(q)) return ""; // a single identifier only — not a phrase/regex
+  const t = String(summarizedText || "");
+  if (/^\(no results\)/.test(t.trimStart()) || /INCOMPLETE RESULTS/.test(t)) return "";
+  return (
+    `\n\n↪ Found where "${q}" is DEFINED. To find where it's USED (call sites / references), run ` +
+    `search_text q="${q}" — Rider's indexed string match. (search_symbol matches definitions only; ` +
+    `references need the text index, which can miss on un-indexed / UE-macro code.)`
   );
 }
 
@@ -514,7 +562,7 @@ export function summarize(result, meta = {}) {
   const saved = rawTok - sentTok;
   const withLine =
     saved >= 500
-      ? `${text}\n\n✓ Saved ~${saved.toLocaleString()} tokens here (Rider index, summarized vs raw response).`
+      ? `${text}\n\n✓ Saved ~${saved.toLocaleString()} tok here (Rider index, summarized vs raw).`
       : text;
   return { ...result, content: [{ type: "text", text: withLine }] };
 }
@@ -816,9 +864,12 @@ async function main() {
       }
     }
     const out = finish(summarize(result, { ...meta, name }));
+    const outText = (out.content || []).map((c) => (c && c.text) || "").join("\n");
     // A raw-text search whose query is really a symbol hunt → point at search_symbol (semantic, cheaper).
-    const steerText = textSymbolSteer(name, args, (out.content || []).map((c) => (c && c.text) || "").join("\n"));
-    return appendNote(out, steerText);
+    const steerText = textSymbolSteer(name, args, outText);
+    // A focused search_symbol that found a definition → point at search_text for "where is it USED?".
+    const usesText = usesSteer(name, args, outText);
+    return appendNote(out, steerText + usesText);
   });
 
   await server.connect(new StdioServerTransport());
