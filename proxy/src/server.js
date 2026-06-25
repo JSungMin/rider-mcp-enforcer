@@ -537,13 +537,10 @@ export function summarizeSearch(info, { escalated, fetchedLimit, name } = {}) {
     const total = info.more ? `${kept0.length}+` : `${kept0.length}`;
     text +=
       `\n\n⚠ INCOMPLETE RESULTS — showing ${shown} of ${total} match(es)` +
-      (escalated ? ` (proxy already auto-raised the limit to ${fetchedLimit})` : "") +
-      `.\nThis list is NOT exhaustive. Do NOT use it as the complete set for finding all` +
-      ` references, refactoring, or renaming — you may miss call sites and write wrong code.\n` +
-      `Ask the USER to choose one:\n` +
-      `  1) raise the cap (set RIDER_MAX_RESULTS higher, or pass a larger \`limit\`) to see all,\n` +
-      `  2) narrow the search (pass \`paths\` to a subdirectory), or\n` +
-      `  3) explicitly confirm a partial/representative result is acceptable for this task.`;
+      (escalated ? ` (auto-raised to ${fetchedLimit})` : "") +
+      `.\nNOT exhaustive — don't use as the complete set for refactor/rename (missed call sites → wrong code).\n` +
+      `Ask the USER: 1) raise the cap (RIDER_MAX_RESULTS or a larger \`limit\`), 2) narrow via \`paths\`, ` +
+      `or 3) confirm a partial result is acceptable.`;
   }
   return { text: text || "(no results)", excluded };
 }

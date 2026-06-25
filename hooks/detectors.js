@@ -106,6 +106,27 @@ export function isCodeGlobTool(ti) {
   return CODE_EXT_RE.test(base) || CODE_DIR_RE.test(p);
 }
 
+// A Bash command that EDITS a code file in place (`sed -i`, an `awk` inplace/redirect, or a python/perl
+// heredoc/`-c` that opens a code file for write). Rider's edit tools (replace_text_in_file /
+// rename_refactoring / reformat_file) are Rider-aware — a blind sed/regex splice can corrupt code or miss
+// references a refactor would update. FP-careful: a code-ext path AND an explicit write/in-place signal must
+// BOTH be present, so a read-only `sed`/`awk` in a pipeline or a `python build.py` isn't nagged.
+// (Ported from vs-token-safer 0.32, #151, retargeted to Rider's edit surface — no semantic symbol-edit.)
+export function isBashCodeEdit(cmd) {
+  const s = String(cmd || "");
+  if (!CODE_EXT_RE.test(s)) return false; // no code-file path → not a code edit
+  if (/\bsed\b[^|]*\s-i\b/.test(s)) return true; // sed -i (in-place)
+  if (/\bawk\b/.test(s) && (/-i\s+inplace/.test(s) || /\bawk\b[^|]*>/.test(s))) return true; // awk inplace / redirect to a file
+  if (
+    /\b(?:python3?|perl)\b/.test(s) &&
+    /(<<|-c\b)/.test(s) && // a heredoc or -c that WRITES
+    (/open\s*\([^)]*["'][aw]b?["']/.test(s) || /\.write(?:_text|_bytes)?\s*\(/.test(s) || /Path\s*\([^)]*\)\s*\.write/.test(s))
+  ) {
+    return true;
+  }
+  return false;
+}
+
 // Split a Bash command into segments and test if ANY is a code search (mirrors the hook's logic).
 // A `find` in a command that also runs a file-op (cp/tar/xargs/du/…) is plumbing for that op, not a code
 // search — excluded here so the `discover` analyzer and the hook classify a backup/copy script identically.

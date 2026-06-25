@@ -266,6 +266,34 @@ test("Bash: a literal grep alongside a file-op is STILL nudged (grep isn't relax
   assert.match(r.stdout, /rider-mcp-enforcer/, "only find is relaxed by file-op context, not grep");
 });
 
+// --- Bash code-file edit steer: warn-only toward Rider's edit tools (ported from vts #151) ---
+test("Bash: `sed -i …` on a .cpp → edit-warn nudge, exit 0", () => {
+  const r = runHook({ tool_name: "Bash", tool_input: { command: "sed -i 's/Foo/Bar/' src/Foo.cpp" } });
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /rider-mcp-enforcer/);
+  assert.match(r.stdout, /replace_text_in_file|rename_refactoring/);
+});
+
+test("Bash: a read-only `sed -n` (no -i) is NOT an edit → no nudge", () => {
+  const r = runHook({ tool_name: "Bash", tool_input: { command: "sed -n '1,5p' src/Foo.cpp" } });
+  assert.equal(r.stdout.trim(), "");
+});
+
+test("Bash: `sed -i` on a non-code file (.md) → no edit nudge", () => {
+  const r = runHook({ tool_name: "Bash", tool_input: { command: "sed -i 's/a/b/' notes.md" } });
+  assert.equal(r.stdout.trim(), "");
+});
+
+test("Bash: a code-file edit NEVER blocks, even under RIDER_ENFORCE=block", () => {
+  const r = runHook({ tool_name: "Bash", tool_input: { command: "sed -i 's/Foo/Bar/' src/Foo.cs" } }, { RIDER_ENFORCE: "block" });
+  assert.equal(r.code, 0, "edit-warn is warn-only — blocking mid-edit would strand the model");
+});
+
+test("Bash: RIDER_EDIT_WARN=0 silences the edit nudge", () => {
+  const r = runHook({ tool_name: "Bash", tool_input: { command: "sed -i 's/Foo/Bar/' src/Foo.cpp" } }, { RIDER_EDIT_WARN: "0" });
+  assert.equal(r.stdout.trim(), "");
+});
+
 // --- localization: RIDER_LANG > config lang > OS locale > en ---
 test("Grep: RIDER_LANG=ko → Korean nudge", () => {
   const r = grep({ pattern: "Foo", glob: "*.cs" }, { RIDER_LANG: "ko" });
