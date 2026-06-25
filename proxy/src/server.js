@@ -105,6 +105,7 @@ const CONFIG_KEYS = [
   "riderSseUrl", "projectPath", "maxResults", "escalate", "escalateLimit",
   "maxLineChars", "exclude", "excludeOff", "summarizeTools", "statsFile",
   "regenCmd", "enginePath", "regenTimeout", "excludeCommands", "lang",
+  "compactResults", "textSteer",
 ];
 function readConfigFile() {
   try {
@@ -136,6 +137,8 @@ function effectiveConfig() {
     maxLineChars: MAX_LINE_CHARS,
     excludeOff: EXCLUDE_OFF,
     exclude: EXCLUDE,
+    compactResults: compactResultsOn(),
+    textSteer: textSteerOn(),
     statsFile: STATS_FILE,
   };
 }
@@ -373,6 +376,122 @@ export function itemLine(it) {
   return `${p}${line !== "" ? ":" + line : ""}${txt ? "  " + txt : ""}`;
 }
 
+// ---- common-prefix output factoring (ported from vs-token-safer 0.26.4) ----
+// Toggles read the env LIVE (via cfg) so a test can flip them per-call, mirroring rider's other settings.
+const compactResultsOn = () => !isOff(cfg("RIDER_COMPACT_RESULTS", "compactResults", "1"));
+// Longest common DIRECTORY prefix across `path:line  text` lines. We split on "/" and stop one segment
+// short of the end, so the filename segment (which carries the `:line  text`) is NEVER counted — only the
+// shared DIR is factored and the full path stays recoverable as `<prefix>/<tail>`. "" if <2 lines / no
+// shared dir. On a UE tree every match repeats the same long root, which is most of the token cost.
+export function commonDirPrefix(lines) {
+  if (lines.length < 2) return "";
+  const split = lines.map((l) => l.split("/"));
+  const minLen = Math.min(...split.map((s) => s.length));
+  let i = 0;
+  while (i < minLen - 1 && split.every((s) => s[i] === split[0][i])) i++;
+  return i > 0 ? split[0].slice(0, i).join("/") : "";
+}
+// Factor the common directory prefix out of the match lines: print it ONCE as `under <prefix>/` and indent
+// the relative tails. RIDER_COMPACT_RESULTS=0 restores the classic per-row absolute paths.
+export function factorCommonPrefix(lines) {
+  if (!compactResultsOn() || lines.length < 2) return lines.join("\n");
+  const prefix = commonDirPrefix(lines);
+  if (!prefix) return lines.join("\n");
+  return `under ${prefix}/\n` + lines.map((l) => "  " + l.slice(prefix.length + 1)).join("\n");
+}
+
+// ---- text→symbol steer (ported from vs-token-safer 0.26.0, VTS_TEXT_STEER) ----
+const textSteerOn = () => !isOff(cfg("RIDER_TEXT_STEER", "textSteer", "1"));
+// Rider's RAW-TEXT search tools (NOT symbol/file search). A symbol-hunt query sent to one of these is
+// answered more cheaply by search_symbol (Rider's semantic index).
+const TEXT_SEARCH_RE = /(search_text|search_regex|search_in_files)/i;
+function pickQuery(args) {
+  for (const k of ["query", "q", "searchText", "text", "pattern", "mask", "substring"]) {
+    if (typeof args?.[k] === "string" && args[k].trim()) return args[k];
+  }
+  return "";
+}
+// A text query that is really a symbol hunt: the <Type> template arg wins, else the longest CamelCase /
+// snake identifier; null for prose / TODO-FIXME-only. Exported for tests.
+export function symbolHuntInText(q) {
+  const s = String(q || "");
+  if (!s || s.length > 200) return null;
+  const tmpl = /<\s*([A-Za-z_][A-Za-z0-9_]*)\s*>/.exec(s);
+  if (tmpl) return tmpl[1];
+  const ids = s.match(/[A-Za-z_][A-Za-z0-9_]{2,}/g) || [];
+  const cand = ids.filter((w) => /[a-z][A-Z]/.test(w) || /[a-z0-9]_[a-z]/.test(w));
+  if (!cand.length) return null;
+  return cand.sort((a, b) => b.length - a.length)[0];
+}
+// An ALTERNATION of symbols (`A|B|C`, any N) — the model reaches for a text scan because a single
+// search_symbol takes ONE name, not a regex, so one semantic call can't answer A|B. Pull every identifier
+// branch so the steer can point at search_symbol PER symbol. Returns the deduped identifier list, or null
+// when it isn't a symbol alternation: every `|`-branch must be a bare identifier AND at least one must carry
+// a CamelCase/snake cue (so a keyword/content alternation — TODO|FIXME, GET|POST|HEAD — is left alone, real
+// text filters, matching how the grep-block hook classifies these). (Ported from vs-token-safer 0.30, #150.)
+export function altSymbols(q) {
+  const s = String(q || "");
+  if (!s.includes("|") || s.length > 200) return null;
+  const branches = s.split("|").map((b) => b.trim()).filter(Boolean);
+  if (branches.length < 2) return null;
+  if (!branches.every((b) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(b))) return null; // any non-identifier branch → a regex, not a symbol list
+  if (!branches.some((b) => /[a-z][A-Z]|[a-z0-9]_[a-z]/.test(b))) return null; // no CamelCase/snake cue → keyword alternation, leave it
+  return [...new Set(branches)];
+}
+// Build the one-line symbol steer for a text-search TOOL call, or "". Fires only on a clear symbol hunt
+// that benefits: the result was INCOMPLETE (completeness now matters) OR the query carries a `<>`/`::` cue
+// — a CamelCase text search that completed fine isn't nagged. HONEST about Rider's ceiling: unlike the
+// LSP-backed vs-token-safer this is ported from, Rider's C++ symbol index can MISS, so we make NO
+// completeness claim and keep text search as the explicit fallback.
+export function textSymbolSteer(name, args, summarizedText) {
+  if (!textSteerOn() || !TEXT_SEARCH_RE.test(String(name || ""))) return "";
+  const q = pickQuery(args);
+  // Alternation of symbols (A|B|C, any N) → steer to search_symbol on EACH (a single search_symbol can't
+  // take a regex; the text scan matched the whole alternation as line text). Fires regardless of
+  // truncation — an alternation of symbols always has a strictly better per-symbol path.
+  const alts = altSymbols(q);
+  if (alts && alts.length >= 2) {
+    const list = alts.slice(0, 6).map((a) => `search_symbol q="${a}"`).join(" · ");
+    const more = alts.length > 6 ? ` (+${alts.length - 6} more)` : "";
+    return (
+      `\n\n↪ "${q}" is an ALTERNATION of ${alts.length} symbols — this text scan matched it as one regex ` +
+      `(line text). A single search_symbol can't take A|B; run ONE per symbol via Rider's semantic index: ${list}${more}. ` +
+      `(Rider's C++ symbol index can miss on un-indexed / UE-macro code, so keep this text search as the fallback.)`
+    );
+  }
+  const sym = symbolHuntInText(q);
+  if (!sym) return "";
+  const strong = /::|<|>/.test(String(q));
+  const incomplete = /INCOMPLETE RESULTS/.test(String(summarizedText || ""));
+  if (!strong && !incomplete) return "";
+  return (
+    `\n\n↪ "${sym}" looks like a symbol, not free text. search_symbol q="${sym}" matches it via Rider's ` +
+    `semantic index (definitions) — usually far smaller and without a text scan's false positives` +
+    (incomplete ? ", and not truncated like this scan was" : "") +
+    `. (Rider's C++ symbol index can miss on un-indexed / UE-macro code, so keep this text search as the fallback.)`
+  );
+}
+
+// ---- "where is it USED?" steer (ported from vs-token-safer 0.33, #154, retargeted) ----
+const usesSteerOn = () => !isOff(cfg("RIDER_USES_STEER", "usesSteer", "1"));
+// After a focused search_symbol found the DECLARATION(s), the natural next step is "where is it USED?".
+// vs-token-safer points at a semantic find_references; Rider's MCP has no semantic references, so we point
+// at search_text (its indexed string match) and stay HONEST that it can miss. Fires only on a single-
+// identifier symbol lookup that returned something and was not flagged INCOMPLETE (a huge/partial def set
+// is noise, not a clean "now find the uses" moment).
+export function usesSteer(name, args, summarizedText) {
+  if (!usesSteerOn() || !/search_symbol/i.test(String(name || ""))) return "";
+  const q = pickQuery(args);
+  if (!q || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(q)) return ""; // a single identifier only — not a phrase/regex
+  const t = String(summarizedText || "");
+  if (/^\(no results\)/.test(t.trimStart()) || /INCOMPLETE RESULTS/.test(t)) return "";
+  return (
+    `\n\n↪ Found where "${q}" is DEFINED. To find where it's USED (call sites / references), run ` +
+    `search_text q="${q}" — Rider's indexed string match. (search_symbol matches definitions only; ` +
+    `references need the text index, which can miss on un-indexed / UE-macro code.)`
+  );
+}
+
 // Compact items to `path:line  lineText`, cap at MAX_RESULTS. When the result is NOT
 // exhaustive (more items fetched than shown, OR Rider still reports `more`), emit a LOUD
 // INCOMPLETE banner with explicit options so Claude escalates to the user instead of
@@ -408,7 +527,7 @@ export function summarizeSearch(info, { escalated, fetchedLimit, name } = {}) {
       excluded,
     };
   }
-  let text = lines.join("\n");
+  let text = factorCommonPrefix(lines);
   if (excluded > 0) {
     text +=
       `\n(${excluded} build-artifact/generated path(s) hidden by default exclude; ` +
@@ -418,13 +537,10 @@ export function summarizeSearch(info, { escalated, fetchedLimit, name } = {}) {
     const total = info.more ? `${kept0.length}+` : `${kept0.length}`;
     text +=
       `\n\n⚠ INCOMPLETE RESULTS — showing ${shown} of ${total} match(es)` +
-      (escalated ? ` (proxy already auto-raised the limit to ${fetchedLimit})` : "") +
-      `.\nThis list is NOT exhaustive. Do NOT use it as the complete set for finding all` +
-      ` references, refactoring, or renaming — you may miss call sites and write wrong code.\n` +
-      `Ask the USER to choose one:\n` +
-      `  1) raise the cap (set RIDER_MAX_RESULTS higher, or pass a larger \`limit\`) to see all,\n` +
-      `  2) narrow the search (pass \`paths\` to a subdirectory), or\n` +
-      `  3) explicitly confirm a partial/representative result is acceptable for this task.`;
+      (escalated ? ` (auto-raised to ${fetchedLimit})` : "") +
+      `.\nNOT exhaustive — don't use as the complete set for refactor/rename (missed call sites → wrong code).\n` +
+      `Ask the USER: 1) raise the cap (RIDER_MAX_RESULTS or a larger \`limit\`), 2) narrow via \`paths\`, ` +
+      `or 3) confirm a partial result is acceptable.`;
   }
   return { text: text || "(no results)", excluded };
 }
@@ -443,7 +559,7 @@ export function summarize(result, meta = {}) {
   const saved = rawTok - sentTok;
   const withLine =
     saved >= 500
-      ? `${text}\n\n✓ Saved ~${saved.toLocaleString()} tokens here (Rider index, summarized vs raw response).`
+      ? `${text}\n\n✓ Saved ~${saved.toLocaleString()} tok here (Rider index, summarized vs raw).`
       : text;
   return { ...result, content: [{ type: "text", text: withLine }] };
 }
@@ -524,6 +640,8 @@ async function main() {
           exclude: { type: "string", description: "Comma list of path substrings to drop (build artifacts)" },
           excludeOff: { type: "boolean", description: "Keep excluded paths in results" },
           summarizeTools: { type: "string", description: "Comma list of Rider tool names to summarize" },
+          compactResults: { type: "boolean", description: "Factor the common path prefix out of search/find results (default true)" },
+          textSteer: { type: "boolean", description: "Nudge a symbol-hunt text search toward search_symbol (default true)" },
           statsFile: { type: "string", description: "Path for the savings ledger" },
           regenCmd: { type: "string", description: "rider_regen_project: explicit command template ({uproject}/{engine} tokens); bypasses auto-detect" },
           enginePath: { type: "string", description: "rider_regen_project: Unreal engine dir override for auto-detect" },
@@ -742,7 +860,13 @@ async function main() {
         /* keep the first result if the escalated call fails */
       }
     }
-    return finish(summarize(result, { ...meta, name }));
+    const out = finish(summarize(result, { ...meta, name }));
+    const outText = (out.content || []).map((c) => (c && c.text) || "").join("\n");
+    // A raw-text search whose query is really a symbol hunt → point at search_symbol (semantic, cheaper).
+    const steerText = textSymbolSteer(name, args, outText);
+    // A focused search_symbol that found a definition → point at search_text for "where is it USED?".
+    const usesText = usesSteer(name, args, outText);
+    return appendNote(out, steerText + usesText);
   });
 
   await server.connect(new StdioServerTransport());

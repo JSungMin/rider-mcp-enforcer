@@ -31,14 +31,39 @@ export function isGitGrepSegment(segment) {
   return execOf(segment) === "git" && /(^|\s)git\s+grep(\s|$)/i.test(String(segment));
 }
 
+// A `find` doing FILE-OPS (not a search-to-read): an action flag (-exec/-delete/-print0/…) or `-type d`
+// means it's enumerating files to ACT on (backup, copy, cleanup), NOT hunting code for the model to read.
+// Rider's index-based file search is token-capped, so it's the WRONG substitute there — a capped list
+// would silently drop files from a copy/delete. So such a find is never treated as a code search.
+// (Ported from vs-token-safer 0.28.x, #147 — live-found: a UE-depot backup find got blocked.)
+const FIND_ACTION_RE = /\s-(exec|execdir|delete|ok|okdir|print0|fprint0?|fls|fprintf)\b/;
+const FIND_TYPE_DIR_RE = /\s-type\s+d\b/;
+export function isFindFileOps(segment) {
+  return execOf(segment) === "find" && (FIND_ACTION_RE.test(segment) || FIND_TYPE_DIR_RE.test(segment));
+}
+
+// File-operation executables — when ANY segment of a command is one of these, a `find` segment in the
+// same command is PLUMBING for that op (the file list feeds cp/tar/xargs/…), not an interactive code
+// search. So such a find is excluded from the nudge even without its own -exec (`find … -name '*.cpp' |
+// xargs cp`, `du …; find … -name '*.uproject'` during a backup). grep segments are NOT relaxed (a literal
+// grep inside a pipeline is usually content filtering, and a non-search session can still RIDER_ENFORCE=0).
+export const FILE_OPS_EXECS = new Set([
+  "cp", "mv", "rm", "tar", "rsync", "xargs", "zip", "unzip", "7z", "cpio", "install",
+  "ln", "du", "df", "chmod", "chown", "mkdir", "touch", "dd", "scp", "robocopy", "pax",
+]);
+export function hasFileOpsContext(segments) {
+  return segments.some((s) => FILE_OPS_EXECS.has(execOf(s)));
+}
+
 // A single Bash command segment that is a code-symbol search (grep/rg/ack/ag/findstr/`find -name`/
 // `git grep` over C/C++/C# source), not aimed at a log/build/text path.
 export function isCodeSearchSegment(segment) {
   const exec = execOf(segment);
   const s = String(segment).toLowerCase();
   const isSearch =
-    SEARCH_EXECS.has(exec) || (exec === "find" && /\s-name(\s|$)/.test(s)) || isGitGrepSegment(segment);
+    SEARCH_EXECS.has(exec) || (exec === "find" && /\s-i?name(\s|$)/.test(s)) || isGitGrepSegment(segment);
   if (!isSearch) return false;
+  if (isFindFileOps(segment)) return false; // a file-ops find is not a code search
   const textTarget =
     TEXT_TARGET_RE.test(s) ||
     /(^|[\s"'/\\])(logs?|build|intermediate|saved|node_modules|\.git)[\\/]/.test(s);
@@ -81,9 +106,34 @@ export function isCodeGlobTool(ti) {
   return CODE_EXT_RE.test(base) || CODE_DIR_RE.test(p);
 }
 
+// A Bash command that EDITS a code file in place (`sed -i`, an `awk` inplace/redirect, or a python/perl
+// heredoc/`-c` that opens a code file for write). Rider's edit tools (replace_text_in_file /
+// rename_refactoring / reformat_file) are Rider-aware — a blind sed/regex splice can corrupt code or miss
+// references a refactor would update. FP-careful: a code-ext path AND an explicit write/in-place signal must
+// BOTH be present, so a read-only `sed`/`awk` in a pipeline or a `python build.py` isn't nagged.
+// (Ported from vs-token-safer 0.32, #151, retargeted to Rider's edit surface — no semantic symbol-edit.)
+export function isBashCodeEdit(cmd) {
+  const s = String(cmd || "");
+  if (!CODE_EXT_RE.test(s)) return false; // no code-file path → not a code edit
+  if (/\bsed\b[^|]*\s-i\b/.test(s)) return true; // sed -i (in-place)
+  if (/\bawk\b/.test(s) && (/-i\s+inplace/.test(s) || /\bawk\b[^|]*>/.test(s))) return true; // awk inplace / redirect to a file
+  if (
+    /\b(?:python3?|perl)\b/.test(s) &&
+    /(<<|-c\b)/.test(s) && // a heredoc or -c that WRITES
+    (/open\s*\([^)]*["'][aw]b?["']/.test(s) || /\.write(?:_text|_bytes)?\s*\(/.test(s) || /Path\s*\([^)]*\)\s*\.write/.test(s))
+  ) {
+    return true;
+  }
+  return false;
+}
+
 // Split a Bash command into segments and test if ANY is a code search (mirrors the hook's logic).
+// A `find` in a command that also runs a file-op (cp/tar/xargs/du/…) is plumbing for that op, not a code
+// search — excluded here so the `discover` analyzer and the hook classify a backup/copy script identically.
 export function bashHasCodeSearch(command) {
-  return String(command || "")
-    .split(/\|\||&&|[|;&\n]/g)
-    .some((seg) => seg.trim() && isCodeSearchSegment(seg));
+  const segments = String(command || "").split(/\|\||&&|[|;&\n]/g);
+  const fileOps = hasFileOpsContext(segments);
+  return segments.some(
+    (seg) => seg.trim() && isCodeSearchSegment(seg) && !(fileOps && execOf(seg) === "find"),
+  );
 }

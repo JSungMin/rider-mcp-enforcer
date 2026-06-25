@@ -25,7 +25,7 @@
 
 // Pure classifiers live in a side-effect-free module so the `discover` analyzer can share the EXACT
 // same detection without importing this hook's stdin/exit behavior (single source of truth).
-import { isCodeSearchSegment, isCodeGrepTool, isCodeGlobTool, globBasename, execOf } from "./detectors.js";
+import { isCodeSearchSegment, isCodeGrepTool, isCodeGlobTool, globBasename, execOf, hasFileOpsContext, isBashCodeEdit } from "./detectors.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -196,6 +196,21 @@ function bashNudge(mode) {
     "projects are open, pass projectPath. Raw non-code text → re-run on a non-code file; disable with RIDER_ENFORCE=0.";
 }
 
+// Bash code-file edit steer (separate from search): a `sed -i` / awk-inplace / python-write over a code
+// file is file surgery that bypasses Rider's Rider-aware edit tools. Warn-only (NEVER blocks — denying
+// mid-edit would strand the model), gated by RIDER_EDIT_WARN (on by default; =0 silences).
+const editWarnOn = () => !/^(0|false|off|no)$/i.test(String(process.env.RIDER_EDIT_WARN ?? "1"));
+function bashEditNudge() {
+  return KO
+    ? "[rider-mcp-enforcer] Bash로 코드 파일을 직접 수정 중이에요. Rider 편집 도구가 더 안전해요: " +
+      "replace_text_in_file는 잘못된 정규식으로 코드를 깨뜨리지 않고, rename_refactoring은 모든 참조를 " +
+      "갱신해요(맹목적 sed는 호출부를 놓침). 정렬은 reformat_file. 간단한 부분 수정이면 그대로 OK. 끄기: RIDER_EDIT_WARN=0."
+    : "[rider-mcp-enforcer] Editing a code file via Bash (sed -i / in-place). Rider's edit tools are " +
+      "Rider-aware: replace_text_in_file won't corrupt code with a bad regex, and rename_refactoring " +
+      "updates ALL references a blind sed would miss; reformat_file fixes layout. A quick partial tweak? " +
+      "Carry on. Disable: RIDER_EDIT_WARN=0.";
+}
+
 let input = "";
 process.stdin.on("data", (d) => (input += d));
 process.stdin.on("end", () => {
@@ -236,7 +251,12 @@ process.stdin.on("end", () => {
   // whose executable is in excludeCommands is left alone (finer than the global RIDER_ENFORCE=0).
   const excluded = excludedCommands();
   const segments = cmd.split(/\|\||&&|[|;&\n]/g);
-  const hit = segments.some((seg) => seg.trim() && isCodeSearchSegment(seg) && !excluded.has(execOf(seg)));
+  // A `find` in a command that also runs a file-op (cp/tar/xargs/du/…) is plumbing for that op, not a code
+  // search — exclude it so a backup/copy script isn't nudged (and isn't steered to a token-capped file list).
+  const fileOps = hasFileOpsContext(segments);
+  const hit = segments.some(
+    (seg) => seg.trim() && isCodeSearchSegment(seg) && !excluded.has(execOf(seg)) && !(fileOps && execOf(seg) === "find"),
+  );
 
   if (hit) {
     const nudge = bashNudge(mode) + setup;
@@ -246,6 +266,13 @@ process.stdin.on("end", () => {
     }
     process.stderr.write(nudge + "\n");
     process.exit(2); // block (opt-in via RIDER_ENFORCE=block)
+  }
+
+  // Not a code search → a Bash code-file EDIT (sed -i / awk inplace / python-write) that bypasses Rider's
+  // Rider-aware edit tools. Warn-only (never block — blocking mid-edit would strand the model).
+  if (editWarnOn() && isBashCodeEdit(cmd)) {
+    emitWarn(bashEditNudge() + setup);
+    process.exit(0);
   }
 
   // Not a code search → maybe a single read-only VCS command we can transparently compact (never blocks).
