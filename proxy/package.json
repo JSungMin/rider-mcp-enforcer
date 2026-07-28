@@ -11,7 +11,7 @@
     "bench": "node bench-ab.mjs"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.12.0"
+    "@modelcontextprotocol/sdk": "^1.30.0"
   },
   "engines": { "node": ">=18" }
 }
